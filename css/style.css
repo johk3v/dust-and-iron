@@ -168,7 +168,7 @@ body {
 .action-sub { font-size: 0.8rem; color: var(--text-dim); }
 
 .action-btn, .btn {
-  background: var(--red);
+  background: var(--green);
   color: #fff;
   border: none;
   padding: 8px 14px;
@@ -181,7 +181,7 @@ body {
 
 .action-btn:hover, .btn:hover { filter: brightness(1.15); }
 .action-btn:disabled, .btn:disabled { background: #555; cursor: not-allowed; filter: none; }
-.action-btn.active-action { background: var(--green); }
+.action-btn.active-action { background: var(--red); }
 
 .btn.secondary { background: var(--wood); }
 .btn.danger { background: #6b1a1a; }
