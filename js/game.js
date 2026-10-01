@@ -157,6 +157,10 @@ function completeAction() {
 
   // loop the action
   state.currentAction.progress = 0;
+
+  // Refresh whichever tab is open so qty/XP bars update live instead of
+  // only on tab-switch (Bank qty, skill level/XP bar, etc.)
+  render();
 }
 
 // ---------- Combat ----------
@@ -189,6 +193,12 @@ function fleeBattle() {
 }
 
 function logCombat(msg) {
+  // Store in state (not just the DOM) so the log survives a full re-render
+  // of the combat tab, e.g. when stats update live mid-fight.
+  if (!state.combat.log) state.combat.log = [];
+  state.combat.log.push(msg);
+  if (state.combat.log.length > 60) state.combat.log.shift();
+
   const logEl = document.getElementById("combat-log");
   if (!logEl) return;
   const div = document.createElement("div");
@@ -487,7 +497,7 @@ function renderCombatTab() {
         </div>
       </div>
       <button class="btn danger" style="margin-top:10px" onclick="fleeBattle()">Flee</button>
-      <div id="combat-log" style="margin-top:10px"></div>
+      <div id="combat-log" style="margin-top:10px">${(state.combat.log || []).map(m => `<div>${m}</div>`).join("")}</div>
     `;
   }
 
@@ -495,18 +505,20 @@ function renderCombatTab() {
     <div class="panel">
       <div class="skill-header">
         <h2>💀 Combat</h2>
-        <div class="level-badge">Lv. ${state.combat.level}</div>
+        <div class="level-badge" id="combat-level-badge">Lv. ${state.combat.level}</div>
       </div>
-      <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${combatPct}%"></div></div>
+      <div class="xp-bar-outer"><div class="xp-bar-inner" id="combat-xp-bar" style="width:${combatPct}%"></div></div>
       <div class="equip-row">
         <label>Weapon: <select onchange="equipWeapon(this.value)">${weaponOptions}</select></label>
-        <span class="action-sub">Dmg ${weapon.dmgMin}-${weapon.dmgMax} · Ammo: ${ITEMS[weapon.ammo].name} (${state.inventory[weapon.ammo]||0})</span>
+        <span class="action-sub">Dmg ${weapon.dmgMin}-${weapon.dmgMax} · Ammo: ${ITEMS[weapon.ammo].name} (<span id="ammo-count">${state.inventory[weapon.ammo]||0}</span>)</span>
       </div>
       <div class="region-select">${regionButtons}</div>
       ${monsterListHtml}
       ${battleHtml}
     </div>
   `;
+  const logEl = document.getElementById("combat-log");
+  if (logEl) logEl.scrollTop = logEl.scrollHeight;
 }
 
 function updateCombatView() {
@@ -522,6 +534,21 @@ function updateCombatView() {
   if (monsterBar) monsterBar.style.width = `${Math.max(0,(state.combat.monsterHp/monsterDef.hp)*100)}%`;
   if (playerText) playerText.textContent = `${Math.max(0,state.combat.hp)} / ${state.combat.maxHp} HP`;
   if (monsterText) monsterText.textContent = `${Math.max(0,state.combat.monsterHp)} / ${monsterDef.hp} HP`;
+
+  // Keep ammo count, combat level, and XP bar live too — these change on
+  // every shot/kill but previously only refreshed on tab-switch.
+  const weapon = getEquippedWeapon();
+  const ammoEl = document.getElementById("ammo-count");
+  if (ammoEl) ammoEl.textContent = state.inventory[weapon.ammo] || 0;
+  const levelBadge = document.getElementById("combat-level-badge");
+  if (levelBadge) levelBadge.textContent = `Lv. ${state.combat.level}`;
+  const xpBar = document.getElementById("combat-xp-bar");
+  if (xpBar) {
+    const xpStart = xpForLevel(state.combat.level);
+    const xpEnd = xpForLevel(state.combat.level + 1);
+    const pct = state.combat.level >= 99 ? 100 : Math.floor(((state.combat.xp - xpStart) / (xpEnd - xpStart)) * 100);
+    xpBar.style.width = `${pct}%`;
+  }
 }
 
 function renderBankTab() {
