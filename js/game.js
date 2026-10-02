@@ -423,6 +423,23 @@ function sellAll() {
   toast("Sold entire inventory.");
 }
 
+// ---------- Food / healing ----------
+function eatItem(itemId) {
+  const item = ITEMS[itemId];
+  if (!item || item.type !== "food") return;
+  if ((state.inventory[itemId] || 0) <= 0) return;
+  if (state.combat.hp >= state.combat.maxHp) {
+    toast("Already at full health.");
+    return;
+  }
+  removeItem(itemId, 1);
+  const healed = Math.min(item.heal, state.combat.maxHp - state.combat.hp);
+  state.combat.hp += healed;
+  toast(`🍖 Ate ${item.name}, healed ${healed} HP.`);
+  if (state.combat.inBattle) logCombat(`You eat ${item.name} and heal ${healed} HP.`);
+  render();
+}
+
 // ---------- Offline progress ----------
 function simulateOffline() {
   const now = Date.now();
@@ -661,6 +678,14 @@ function renderCombatTab() {
     `).join("") + `</div>`;
   }
 
+  const foodEntries = Object.keys(state.inventory).filter(id => ITEMS[id] && ITEMS[id].type === "food");
+  const foodBarHtml = foodEntries.length ? `
+    <div class="combat-stats-summary" id="food-bar">
+      <span>🍖 Food:</span>
+      ${foodEntries.map(id => `<button class="btn secondary" onclick="eatItem('${id}')">${ITEMS[id].icon} ${ITEMS[id].name} (${state.inventory[id]}) +${ITEMS[id].heal} HP</button>`).join("")}
+    </div>
+  ` : "";
+
   let battleHtml = "";
   if (state.combat.inBattle) {
     const monsterDef = region.monsters.find(m => m.id === state.combat.monsterId);
@@ -701,6 +726,7 @@ function renderCombatTab() {
         ${weapon.ammo ? `<span>Ammo: <b id="ammo-count">${state.inventory[weapon.ammo]||0}</b> ${ITEMS[weapon.ammo].name}</span>` : ""}
       </div>
       ${renderEquipmentGrid()}
+      ${foodBarHtml}
       <div class="region-select">${regionButtons}</div>
       ${monsterListHtml}
       ${battleHtml}
@@ -746,12 +772,15 @@ function renderBankTab() {
   const rows = Object.keys(state.inventory).sort().map(id => {
     const item = ITEMS[id];
     const qty = state.inventory[id];
+    const eatBtn = item.type === "food"
+      ? `<button class="btn" onclick="eatItem('${id}')" title="Heal ${item.heal} HP">🍖 Eat (+${item.heal} HP)</button>`
+      : "";
     return `
       <tr>
         <td>${item.icon} ${item.name}</td>
         <td>${qty}</td>
         <td>$${item.sell}</td>
-        <td><button class="btn secondary" onclick="sellItem('${id}',1)">Sell 1</button>
+        <td>${eatBtn}<button class="btn secondary" onclick="sellItem('${id}',1)">Sell 1</button>
             <button class="btn secondary" onclick="sellItem('${id}',${qty})">Sell All</button></td>
       </tr>
     `;
@@ -785,6 +814,10 @@ function render() {
   else renderSkillTab(activeTab);
   updateInlineActionProgress();
   updateGoldDisplay();
+  // Re-check soft-lock status on every render, not just on page load —
+  // otherwise the 🔒 nav icon keeps showing after the prerequisite
+  // levels are actually met, until the next full page reload.
+  updateTabLockIndicators();
 }
 
 function updateTabLockIndicators() {

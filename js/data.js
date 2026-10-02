@@ -31,6 +31,19 @@ const ITEMS = {
   turquoise_stone: { name: "Turquoise Stone", icon: "💠", type: "trophy", sell: 10 },
   trail_map:       { name: "Trail Map",       icon: "🗺️", type: "trophy", sell: 40 },
 
+  // ---------------- Fishing (raw catches, double as food) ----------------
+  // type: "food" items can be eaten (from Storage or mid-combat) to
+  // restore `heal` HP, consuming one unit.
+  raw_trout:          { name: "Raw Trout",          icon: "🐟", type: "food", heal: 8,  sell: 3 },
+  raw_catfish:        { name: "Raw Catfish",        icon: "🐠", type: "food", heal: 14, sell: 6 },
+  raw_bass:           { name: "Raw Bass",           icon: "🐡", type: "food", heal: 20, sell: 10 },
+  raw_salmon:         { name: "Raw Salmon",         icon: "🍣", type: "food", heal: 28, sell: 16 },
+  raw_sturgeon:       { name: "Raw Sturgeon",       icon: "🐋", type: "food", heal: 38, sell: 26 },
+  legendary_catfish:  { name: "Legendary Catfish",  icon: "🏆", type: "food", heal: 55, sell: 60 },
+
+  // Farming produce doubles as basic trail food
+  trail_jerky:        { name: "Trail Jerky",        icon: "🥓", type: "food", heal: 6,  sell: 4 },
+
   // ---------------- Craftsmanship: bars ----------------
   bronze_bar:   { name: "Bronze Bar",   icon: "🔶", type: "bar",  sell: 6 },
   iron_bar:     { name: "Iron Bar",     icon: "🔸", type: "bar",  sell: 14 },
@@ -138,7 +151,23 @@ const SKILLS = {
       { id: "milk_cow",      name: "Milk the Cow",  level: 1,  xp: 4,  time: 2.2, yields: [{ item: "milk", qty: 1 }] },
       { id: "grow_wheat",    name: "Grow Wheat",    level: 6,  xp: 8,  time: 2.6, yields: [{ item: "wheat", qty: 1 }] },
       { id: "herd_cattle",   name: "Herd Cattle",   level: 10, xp: 11, time: 3.0, yields: [{ item: "cattle_hide", qty: 1 }] },
+      { id: "smoke_jerky",   name: "Smoke Trail Jerky", level: 10, xp: 12, time: 3.2,
+        consumes: [{ item: "cattle_hide", qty: 1 }], yields: [{ item: "trail_jerky", qty: 2 }] },
       { id: "grow_cotton",   name: "Grow Cotton",   level: 16, xp: 15, time: 3.4, yields: [{ item: "cotton", qty: 1 }] },
+    ],
+  },
+
+  fishing: {
+    name: "Fishing",
+    icon: "🎣",
+    actions: [
+      { id: "fish_trout",    name: "Fish for Trout",       level: 1,  xp: 4,  time: 2.2, yields: [{ item: "raw_trout", qty: 1 }] },
+      { id: "fish_catfish",  name: "Fish for Catfish",     level: 8,  xp: 9,  time: 2.8, yields: [{ item: "raw_catfish", qty: 1 }] },
+      { id: "fish_bass",     name: "Fish for Bass",        level: 15, xp: 14, time: 3.2, yields: [{ item: "raw_bass", qty: 1 }] },
+      { id: "fish_salmon",   name: "Fish for Salmon",      level: 24, xp: 21, time: 3.8, yields: [{ item: "raw_salmon", qty: 1 }] },
+      { id: "fish_sturgeon", name: "Fish for Sturgeon",    level: 33, xp: 30, time: 4.6, yields: [{ item: "raw_sturgeon", qty: 1 }] },
+      { id: "fish_legendary_catfish", name: "Chase the Legendary Catfish", level: 40, xp: 45, time: 6.0, successChance: 0.25,
+        yields: [{ item: "legendary_catfish", qty: 1 }] },
     ],
   },
 

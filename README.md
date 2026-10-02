@@ -20,13 +20,14 @@ Progress autosaves to `localStorage` every 5 seconds, and the game simulates off
 ### Non-combat skills
 - **Woodcutting** — chop pine, oak, and ironwood
 - **Prospecting** — pan/dig for copper, tin, coal, iron, silver, and gold ore
-- **Farming** — tend chickens, milk cows, grow wheat/cotton, herd cattle
+- **Farming** — tend chickens, milk cows, grow wheat/cotton, herd cattle, smoke trail jerky
+- **Fishing** — catch trout, catfish, bass, salmon, sturgeon, and a rare Legendary Catfish; catches double as food
 - **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail)
 - **Craftsmanship** — smelt bars and craft weapons, ammo, and armor. *Soft-locked* until Prospecting 5 + Woodcutting 5.
 - **Settlement** — build up the town (well, saloon, bank vault, railroad...). *Soft-locked* until Craftsmanship 10 + Farming 5.
 - **Debauchery** — gamble, drink, and brawl for gold and rare charms. *Soft-locked* until Settlement 10 + Exploration 10.
 
-Soft-locked skills stay visible in the nav (marked with 🔒) so you always know what's coming, but their actions can't be run until the prerequisites are met.
+Soft-locked skills stay visible in the nav (marked with 🔒) so you always know what's coming, but their actions can't be run until the prerequisites are met. The lock indicator now clears live the moment the requirement is met, no reload needed.
 
 ### Combat
 Three independently-trained combat skills, each leveled by equipping the matching weapon class and fighting with it:
@@ -40,7 +41,8 @@ Turn-based (tick-based) fights across 4 regions (Dusty Gulch → Whispering Pine
 Six gear slots: **Weapon**, **Head**, **Top**, **Bottom**, **Boots**, and an **Extra** customization slot for accessories (badges, charms, trinkets) that grant bonus damage % and/or defense. Armor reduces incoming damage; accessories can boost both offense and defense.
 
 ### Other
-- **Storage** — view and sell your inventory (formerly "Bank")
+- **Storage** — view and sell your inventory (formerly "Bank"); food items show an "Eat" button to heal HP
+- Food/healing: Fishing catches and Trail Jerky (from Farming) restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting
 - Gold-colored XP bars; inline per-activity progress bars right in each action row
 - Currency displayed as `$123` instead of "123 Dollars"
 - Melvor-style exponential XP curve and leveling (same curve for all non-combat and combat skills)
