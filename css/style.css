@@ -65,6 +65,7 @@ body {
   font-size: 0.85rem;
   border-radius: 4px;
   transition: background 0.15s, color 0.15s;
+  position: relative;
 }
 
 .tab-btn:hover { background: var(--panel-light); color: var(--text); }
@@ -76,33 +77,8 @@ body {
   font-weight: bold;
 }
 
-#current-action-bar {
-  background: var(--panel);
-  border: 2px solid var(--border);
-  border-radius: 6px;
-  padding: 10px;
-  margin-bottom: 14px;
-}
-
-#current-action-bar.hidden { display: none; }
-
-#current-action-label { margin-bottom: 6px; font-size: 0.95rem; color: var(--gold); }
-
-.progress-outer {
-  width: 100%;
-  height: 16px;
-  background: #140d08;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.progress-inner {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--red), var(--gold));
-  transition: width 0.08s linear;
-}
+.tab-btn.soft-locked { color: #8a7355; }
+.tab-btn.soft-locked::after { content: " 🔒"; font-size: 0.75em; }
 
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
@@ -146,8 +122,22 @@ body {
 
 .xp-bar-inner {
   height: 100%;
-  background: var(--green);
+  background: linear-gradient(90deg, #a9811f, var(--gold));
 }
+
+/* --- Soft-lock banner shown at the top of a locked skill tab --- */
+.lock-banner {
+  background: var(--panel-light);
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  margin-bottom: 14px;
+  color: var(--text-dim);
+}
+.lock-banner strong { color: var(--gold); }
+.lock-req { margin-top: 6px; font-size: 0.9rem; }
+.lock-req.met { color: var(--green); }
+.lock-req.unmet { color: var(--red); }
 
 .action-list { display: flex; flex-direction: column; gap: 8px; }
 
@@ -159,13 +149,32 @@ body {
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 10px 12px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .action-row.locked { opacity: 0.45; }
 
-.action-info { flex: 1; }
+.action-info { flex: 1; min-width: 180px; }
 .action-name { font-weight: bold; color: var(--text); }
 .action-sub { font-size: 0.8rem; color: var(--text-dim); }
+
+/* --- Inline per-activity progress bar --- */
+.action-progress-outer {
+  width: 100%;
+  height: 8px;
+  background: #140d08;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.action-progress-inner {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--red), var(--gold));
+  transition: width 0.08s linear;
+}
 
 .action-btn, .btn {
   background: var(--green);
@@ -222,8 +231,67 @@ table.bank-table th { color: var(--gold); }
 }
 .hp-bar-inner { height: 100%; background: linear-gradient(90deg, #8a1f1f, #c23b3b); }
 
-.equip-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.equip-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; align-items: center; }
 .equip-row select { font-family: inherit; padding: 6px; background: var(--panel-light); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+
+/* --- Equipment system grid (head/top/bottom/boots/accessory/weapon) --- */
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.equip-slot {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+.equip-slot-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.equip-slot-icon { font-size: 1.6rem; margin-bottom: 4px; }
+.equip-slot select {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 5px;
+  background: var(--wood-dark);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.equip-slot .equip-stat { font-size: 0.72rem; color: var(--text-dim); margin-top: 4px; }
+
+.combat-stats-summary {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.combat-stats-summary b { color: var(--gold); }
+
+.combat-skill-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.combat-skill-btn {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 8px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.combat-skill-btn.active { background: var(--wood); color: var(--gold); border-color: var(--gold); }
 
 #combat-log {
   background: #140d08;
@@ -262,5 +330,3 @@ table.bank-table th { color: var(--gold); }
 @keyframes fadein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0);} }
 
 .monster-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-
-footer-note { color: var(--text-dim); }

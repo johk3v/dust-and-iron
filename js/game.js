@@ -1,12 +1,17 @@
 /* ============================================================
-   DUST & IRON — Game Engine
-   Tick-based idle engine: skills (gather/produce), inventory,
-   bank, equipment, and turn-based combat. Autosaves to
-   localStorage and simulates offline progress on load.
+   DUST & IRON — Game Engine (v2)
+   Tick-based idle engine: non-combat skills w/ soft-locks,
+   inventory, storage, an equipment system (weapon + 4 armor
+   slots + 1 accessory), and 3 trainable combat skills
+   (Brawling / Gunslinging / Marksmanship) driven by whichever
+   weapon class is equipped. Autosaves to localStorage and
+   simulates offline progress on load.
    ============================================================ */
 
-const SAVE_KEY = "dustAndIronSave_v1";
+const SAVE_KEY = "dustAndIronSave_v2";
 const TICK_MS = 100;
+
+const EQUIP_SLOTS = ["weapon", "head", "top", "bottom", "boots", "accessory"];
 
 // ---------- Default state ----------
 function freshState() {
@@ -14,23 +19,30 @@ function freshState() {
   const skillXp = {};
   Object.keys(SKILLS).forEach(k => { skillLevels[k] = 1; skillXp[k] = 0; });
 
+  const combatSkillLevels = {};
+  const combatSkillXp = {};
+  Object.keys(COMBAT_SKILLS).forEach(k => { combatSkillLevels[k] = 1; combatSkillXp[k] = 0; });
+
   return {
     gold: 50,
     inventory: {}, // itemId -> qty
     skillXp,
     skillLevels,
+    combatSkillXp,
+    combatSkillLevels,
+    equipment: { weapon: "rusty_six_shooter", head: null, top: null, bottom: null, boots: null, accessory: null },
     combat: {
-      level: 1,
-      xp: 0,
       hp: 50,
       maxHp: 50,
-      equippedWeapon: "rusty_six_shooter",
       region: "dusty_gulch",
       monsterId: null,
       monsterHp: 0,
       inBattle: false,
+      log: [],
+      playerAttackCd: 0,
+      monsterAttackCd: 0,
     },
-    currentAction: null, // { skillId, actionId, progress (0-1), startedAt }
+    currentAction: null, // { skillId, actionId, progress (0-1), duration }
     lastSeen: Date.now(),
   };
 }
@@ -44,11 +56,13 @@ function loadState() {
     if (!raw) return freshState();
     const parsed = JSON.parse(raw);
     const fresh = freshState();
-    // shallow-merge to survive future added fields
     const merged = Object.assign({}, fresh, parsed);
     merged.combat = Object.assign({}, fresh.combat, parsed.combat || {});
+    merged.equipment = Object.assign({}, fresh.equipment, parsed.equipment || {});
     merged.skillLevels = Object.assign({}, fresh.skillLevels, parsed.skillLevels || {});
     merged.skillXp = Object.assign({}, fresh.skillXp, parsed.skillXp || {});
+    merged.combatSkillLevels = Object.assign({}, fresh.combatSkillLevels, parsed.combatSkillLevels || {});
+    merged.combatSkillXp = Object.assign({}, fresh.combatSkillXp, parsed.combatSkillXp || {});
     return merged;
   } catch (e) {
     console.warn("Save corrupted, starting fresh", e);
@@ -63,7 +77,6 @@ function saveState() {
 
 // ---------- XP / leveling math (Melvor-style exponential curve) ----------
 function xpForLevel(level) {
-  // total xp required to REACH this level
   let total = 0;
   for (let l = 1; l < level; l++) {
     total += Math.floor(100 * Math.pow(1.104, l - 1));
@@ -86,15 +99,46 @@ function addXp(skillId, amount) {
   }
 }
 
-function addCombatXp(amount) {
-  state.combat.xp += amount;
-  const newLevel = levelFromXp(state.combat.xp);
-  if (newLevel > state.combat.level) {
-    state.combat.level = newLevel;
-    state.combat.maxHp = 50 + (newLevel - 1) * 6;
-    state.combat.hp = state.combat.maxHp; // full heal on level up
-    toast(`⚔️ Combat level up! Now level ${newLevel}`);
+function addCombatXp(classId, amount) {
+  state.combatSkillXp[classId] = (state.combatSkillXp[classId] || 0) + amount;
+  const newLevel = levelFromXp(state.combatSkillXp[classId]);
+  if (newLevel > state.combatSkillLevels[classId]) {
+    state.combatSkillLevels[classId] = newLevel;
+    toast(`⚔️ ${COMBAT_SKILLS[classId].name} leveled up to ${newLevel}!`);
   }
+  recalcMaxHp();
+}
+
+function getHighestCombatLevel() {
+  return Math.max(...Object.values(state.combatSkillLevels));
+}
+
+function recalcMaxHp() {
+  const lvl = getHighestCombatLevel();
+  const newMax = 50 + (lvl - 1) * 6;
+  const wasFull = state.combat.hp >= state.combat.maxHp;
+  state.combat.maxHp = newMax;
+  if (wasFull) state.combat.hp = newMax;
+  else state.combat.hp = Math.min(state.combat.hp, newMax);
+}
+
+// ---------- Skill soft-locks ----------
+function skillUnlocked(skillId) {
+  const skill = SKILLS[skillId];
+  if (!skill.requires) return true;
+  return skill.requires.every(r => state.skillLevels[r.skill] >= r.level);
+}
+
+function skillLockReasons(skillId) {
+  const skill = SKILLS[skillId];
+  if (!skill.requires) return [];
+  return skill.requires.map(r => ({
+    skill: r.skill,
+    name: SKILLS[r.skill].name,
+    need: r.level,
+    have: state.skillLevels[r.skill],
+    met: state.skillLevels[r.skill] >= r.level,
+  }));
 }
 
 // ---------- Inventory helpers ----------
@@ -112,20 +156,30 @@ function hasItems(consumes) {
   return consumes.every(c => (state.inventory[c.item] || 0) >= c.qty);
 }
 
-// ---------- Actions (gathering/production) ----------
+// ---------- Actions (gathering/production/risk) ----------
 function findAction(skillId, actionId) {
   return SKILLS[skillId].actions.find(a => a.id === actionId);
 }
 
+function canAffordAction(action) {
+  if (action.goldCost && state.gold < action.goldCost) return false;
+  if (action.consumes && !hasItems(action.consumes)) return false;
+  return true;
+}
+
 function startAction(skillId, actionId) {
+  if (!skillUnlocked(skillId)) {
+    toast(`${SKILLS[skillId].name} is locked.`);
+    return;
+  }
   const action = findAction(skillId, actionId);
   if (!action) return;
   if (state.skillLevels[skillId] < action.level) {
     toast(`Need ${SKILLS[skillId].name} level ${action.level}`);
     return;
   }
-  if (action.consumes && !hasItems(action.consumes)) {
-    toast("Not enough materials!");
+  if (!canAffordAction(action)) {
+    toast(action.goldCost ? "Not enough gold!" : "Not enough materials!");
     return;
   }
   state.currentAction = {
@@ -141,33 +195,97 @@ function stopAction() {
   render();
 }
 
+// Resolves one cycle of an action: spends cost/materials, rolls
+// success if applicable, grants xp/items/gold. Returns false if the
+// cycle could not be paid for (caller should stop the loop).
+function resolveActionCycle(skillId, action) {
+  if (!canAffordAction(action)) return false;
+
+  if (action.goldCost) state.gold -= action.goldCost;
+  if (action.consumes) action.consumes.forEach(c => removeItem(c.item, c.qty));
+
+  const success = action.successChance === undefined || Math.random() < action.successChance;
+
+  if (success) {
+    if (action.yields) action.yields.forEach(y => addItem(y.item, y.qty));
+    if (action.goldYield) {
+      const g = Math.floor(Math.random() * (action.goldYield.max - action.goldYield.min + 1)) + action.goldYield.min;
+      state.gold += g;
+    }
+    addXp(skillId, action.xp);
+  } else {
+    // Failed attempt: materials/gold already spent above are still lost,
+    // but xp gain is reduced and no reward — mirrors risk/reward skills.
+    addXp(skillId, Math.ceil(action.xp * 0.4));
+  }
+  return true;
+}
+
 function completeAction() {
   const { skillId, actionId } = state.currentAction;
   const action = findAction(skillId, actionId);
   if (!action) { state.currentAction = null; return; }
 
-  if (action.consumes && !hasItems(action.consumes)) {
-    toast("Ran out of materials.");
+  const ok = resolveActionCycle(skillId, action);
+  if (!ok) {
+    toast(action.goldCost ? "Ran out of gold." : "Ran out of materials.");
     state.currentAction = null;
+    render();
     return;
   }
-  if (action.consumes) action.consumes.forEach(c => removeItem(c.item, c.qty));
-  action.yields.forEach(y => addItem(y.item, y.qty));
-  addXp(skillId, action.xp);
 
   // loop the action
   state.currentAction.progress = 0;
 
-  // Refresh whichever tab is open so qty/XP bars update live instead of
-  // only on tab-switch (Bank qty, skill level/XP bar, etc.)
+  // Refresh whichever tab is open so qty/XP bars/inline progress update
+  // live instead of only on tab-switch.
   render();
 }
 
-// ---------- Combat ----------
+// ---------- Equipment ----------
 function getEquippedWeapon() {
-  return ITEMS[state.combat.equippedWeapon];
+  return ITEMS[state.equipment.weapon] || ITEMS.fists;
 }
 
+function equipItem(slot, itemId) {
+  if (slot === "weapon" && !itemId) itemId = "fists";
+  state.equipment[slot] = itemId || null;
+  render();
+}
+
+function getTotalDefense() {
+  let def = 0;
+  ["head", "top", "bottom", "boots", "accessory"].forEach(slot => {
+    const id = state.equipment[slot];
+    if (id && ITEMS[id]) def += ITEMS[id].defense || 0;
+  });
+  return def;
+}
+
+function getTotalDmgBonusPct() {
+  const id = state.equipment.accessory;
+  if (id && ITEMS[id]) return ITEMS[id].dmgBonusPct || 0;
+  return 0;
+}
+
+function ownedItemsForSlot(slot) {
+  let owned;
+  if (slot === "weapon") {
+    owned = Object.keys(state.inventory).filter(id => ITEMS[id] && ITEMS[id].type === "weapon").concat(["fists"]);
+  } else if (slot === "accessory") {
+    owned = Object.keys(state.inventory).filter(id => ITEMS[id] && ITEMS[id].type === "accessory");
+  } else {
+    owned = Object.keys(state.inventory).filter(id => ITEMS[id] && ITEMS[id].type === "armor" && ITEMS[id].slot === slot);
+  }
+  // Always include whatever is currently equipped, even if it somehow
+  // isn't in the raw inventory (e.g. the starting weapon), so the
+  // dropdown's selected option always matches the real equipped item.
+  const equipped = state.equipment[slot];
+  if (equipped && !owned.includes(equipped)) owned.push(equipped);
+  return owned;
+}
+
+// ---------- Combat ----------
 function getRegion() {
   return REGIONS.find(r => r.id === state.combat.region);
 }
@@ -193,8 +311,6 @@ function fleeBattle() {
 }
 
 function logCombat(msg) {
-  // Store in state (not just the DOM) so the log survives a full re-render
-  // of the combat tab, e.g. when stats update live mid-fight.
   if (!state.combat.log) state.combat.log = [];
   state.combat.log.push(msg);
   if (state.combat.log.length > 60) state.combat.log.shift();
@@ -215,7 +331,9 @@ function combatTick(deltaSec) {
   if (!monsterDef) return;
 
   const weapon = getEquippedWeapon();
-  const ammoOk = (state.inventory[weapon.ammo] || 0) > 0;
+  const weaponClass = weapon.class;
+  const needsAmmo = !!weapon.ammo;
+  const ammoOk = !needsAmmo || (state.inventory[weapon.ammo] || 0) > 0;
 
   state.combat.playerAttackCd = (state.combat.playerAttackCd || 0) - deltaSec;
   state.combat.monsterAttackCd = (state.combat.monsterAttackCd || 0) - deltaSec;
@@ -225,12 +343,13 @@ function combatTick(deltaSec) {
     if (!ammoOk) {
       logCombat("Out of ammo! Buy/craft more bullets.");
     } else {
-      removeItem(weapon.ammo, 1);
-      const dmg = Math.floor(Math.random() * (weapon.dmgMax - weapon.dmgMin + 1)) + weapon.dmgMin;
+      if (needsAmmo) removeItem(weapon.ammo, 1);
+      const bonus = 1 + getTotalDmgBonusPct();
+      const dmg = Math.round((Math.random() * (weapon.dmgMax - weapon.dmgMin) + weapon.dmgMin) * bonus);
       state.combat.monsterHp -= dmg;
       logCombat(`You hit ${monsterDef.name} for ${dmg} damage.`);
       if (state.combat.monsterHp <= 0) {
-        handleMonsterDeath(monsterDef);
+        handleMonsterDeath(monsterDef, weaponClass);
         return;
       }
     }
@@ -238,7 +357,8 @@ function combatTick(deltaSec) {
 
   if (state.combat.monsterAttackCd <= 0) {
     state.combat.monsterAttackCd = monsterDef.speed;
-    const dmg = Math.floor(Math.random() * (monsterDef.dmgMax - monsterDef.dmgMin + 1)) + monsterDef.dmgMin;
+    const rawDmg = Math.floor(Math.random() * (monsterDef.dmgMax - monsterDef.dmgMin + 1)) + monsterDef.dmgMin;
+    const dmg = Math.max(1, rawDmg - getTotalDefense());
     state.combat.hp -= dmg;
     logCombat(`${monsterDef.name} hits you for ${dmg} damage.`);
     if (state.combat.hp <= 0) {
@@ -248,12 +368,12 @@ function combatTick(deltaSec) {
   }
 }
 
-function handleMonsterDeath(monsterDef) {
+function handleMonsterDeath(monsterDef, weaponClass) {
   logCombat(`💀 You defeated ${monsterDef.name}!`);
-  addCombatXp(monsterDef.xp);
+  addCombatXp(weaponClass, monsterDef.xp);
   const gold = Math.floor(Math.random() * (monsterDef.goldMax - monsterDef.goldMin + 1)) + monsterDef.goldMin;
   state.gold += gold;
-  logCombat(`Looted ${gold} dollars.`);
+  logCombat(`Looted $${gold}.`);
   (monsterDef.loot || []).forEach(l => {
     if (Math.random() < l.chance) {
       addItem(l.item, l.qty);
@@ -274,11 +394,6 @@ function handlePlayerDeath() {
   state.combat.monsterId = null;
 }
 
-function equipWeapon(weaponId) {
-  state.combat.equippedWeapon = weaponId;
-  render();
-}
-
 function setRegion(regionId) {
   state.combat.region = regionId;
   state.combat.inBattle = false;
@@ -286,7 +401,7 @@ function setRegion(regionId) {
   render();
 }
 
-// ---------- Selling / bank ----------
+// ---------- Selling / storage ----------
 function sellItem(itemId, qty) {
   const have = state.inventory[itemId] || 0;
   const sellQty = Math.min(qty, have);
@@ -310,30 +425,21 @@ function simulateOffline() {
   if (elapsedSec < 5) return;
 
   const cappedSec = Math.min(elapsedSec, 8 * 3600); // cap at 8 hours
-  let gained = { gold: 0, items: {}, xp: {} };
 
   if (state.currentAction) {
     const action = findAction(state.currentAction.skillId, state.currentAction.actionId);
-    if (action) {
+    if (action && skillUnlocked(state.currentAction.skillId)) {
       let cycles = Math.floor(cappedSec / action.duration);
-      // limit by available materials for production actions
-      if (action.consumes) {
-        let maxByMats = Infinity;
-        action.consumes.forEach(c => {
-          const have = state.inventory[c.item] || 0;
-          maxByMats = Math.min(maxByMats, Math.floor(have / c.qty));
-        });
-        cycles = Math.min(cycles, maxByMats);
-      }
+      let completed = 0;
       for (let i = 0; i < cycles; i++) {
-        if (action.consumes) action.consumes.forEach(c => removeItem(c.item, c.qty));
-        action.yields.forEach(y => { addItem(y.item, y.qty); gained.items[y.item] = (gained.items[y.item]||0) + y.qty; });
-        addXp(state.currentAction.skillId, action.xp);
-        gained.xp[state.currentAction.skillId] = (gained.xp[state.currentAction.skillId]||0) + action.xp;
+        const ok = resolveActionCycle(state.currentAction.skillId, action);
+        if (!ok) break;
+        completed++;
       }
-      if (cycles > 0) {
-        toast(`⏳ While away: ${cycles}x ${action.name}`);
+      if (completed > 0) {
+        toast(`⏳ While away: ${completed}x ${action.name}`);
       }
+      if (completed < cycles) state.currentAction = null;
     }
   }
 
@@ -351,7 +457,7 @@ function gameLoop() {
     if (state.currentAction.progress >= 1) {
       completeAction();
     }
-    updateActionBar();
+    updateInlineActionProgress();
   }
 
   if (state.combat.inBattle) {
@@ -369,7 +475,7 @@ setInterval(saveState, 5000);
 // RENDERING
 // ============================================================
 
-let activeTab = "prospecting";
+let activeTab = "woodcutting";
 
 function toast(msg) {
   const container = document.getElementById("toast-container");
@@ -385,15 +491,13 @@ function updateGoldDisplay() {
   if (el) el.textContent = state.gold.toLocaleString();
 }
 
-function updateActionBar() {
-  const bar = document.getElementById("current-action-bar");
-  if (!state.currentAction) { bar.classList.add("hidden"); return; }
-  bar.classList.remove("hidden");
-  const action = findAction(state.currentAction.skillId, state.currentAction.actionId);
-  document.getElementById("current-action-label").textContent =
-    `${SKILLS[state.currentAction.skillId].icon} ${action.name}`;
-  document.getElementById("current-action-progress").style.width =
-    `${Math.min(100, state.currentAction.progress * 100)}%`;
+// Updates just the inline progress bar of the currently active action
+// row, if it's visible on the current tab, without a full re-render.
+function updateInlineActionProgress() {
+  const bar = document.getElementById("inline-action-progress");
+  if (bar && state.currentAction) {
+    bar.style.width = `${Math.min(100, state.currentAction.progress * 100)}%`;
+  }
 }
 
 function renderSkillTab(skillId) {
@@ -403,6 +507,18 @@ function renderSkillTab(skillId) {
   const xpStart = xpForLevel(level);
   const xpEnd = xpForLevel(level + 1);
   const pct = level >= 99 ? 100 : Math.floor(((xp - xpStart) / (xpEnd - xpStart)) * 100);
+  const unlocked = skillUnlocked(skillId);
+
+  let lockHtml = "";
+  if (!unlocked) {
+    const reasons = skillLockReasons(skillId);
+    lockHtml = `
+      <div class="lock-banner">
+        <strong>🔒 ${skill.name} is locked.</strong> Reach the following first:
+        ${reasons.map(r => `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
+      </div>
+    `;
+  }
 
   let html = `
     <div class="panel">
@@ -411,29 +527,39 @@ function renderSkillTab(skillId) {
         <div class="level-badge">Lv. ${level}</div>
       </div>
       <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
+      ${lockHtml}
       <div class="action-list">
   `;
 
   skill.actions.forEach(action => {
-    const locked = level < action.level;
+    const levelLocked = level < action.level;
+    const locked = !unlocked || levelLocked;
     const isActive = state.currentAction &&
       state.currentAction.skillId === skillId &&
       state.currentAction.actionId === action.id;
-    const matsOk = hasItems(action.consumes);
+    const affordable = canAffordAction(action);
 
-    const yieldsStr = action.yields.map(y => `${ITEMS[y.item].icon} ${ITEMS[y.item].name} x${y.qty}`).join(", ");
-    const consumesStr = action.consumes
-      ? "Needs: " + action.consumes.map(c => `${ITEMS[c.item].icon} ${ITEMS[c.item].name} x${c.qty}`).join(", ")
+    const bits = [];
+    if (action.yields) bits.push(action.yields.map(y => `${ITEMS[y.item].icon} ${ITEMS[y.item].name} x${y.qty}`).join(", "));
+    if (action.goldYield) bits.push(`$${action.goldYield.min}-${action.goldYield.max}`);
+    if (action.successChance !== undefined) bits.push(`${Math.round(action.successChance * 100)}% success`);
+    bits.push(`${action.xp} xp`, `${action.time}s`);
+    if (action.goldCost) bits.push(`Costs $${action.goldCost}`);
+    if (action.consumes) bits.push("Needs: " + action.consumes.map(c => `${ITEMS[c.item].icon} ${ITEMS[c.item].name} x${c.qty}`).join(", "));
+
+    const progressHtml = isActive
+      ? `<div class="action-progress-outer"><div class="action-progress-inner" id="inline-action-progress" style="width:${state.currentAction.progress * 100}%"></div></div>`
       : "";
 
     html += `
       <div class="action-row ${locked ? 'locked' : ''}">
         <div class="action-info">
-          <div class="action-name">${action.name} ${locked ? `(Req. Lv.${action.level})` : ''}</div>
-          <div class="action-sub">${yieldsStr} · ${action.xp} xp · ${action.time}s ${consumesStr ? '· ' + consumesStr : ''}</div>
+          <div class="action-name">${action.name} ${levelLocked ? `(Req. Lv.${action.level})` : ''}</div>
+          <div class="action-sub">${bits.join(" · ")}</div>
+          ${progressHtml}
         </div>
         <button class="action-btn ${isActive ? 'active-action' : ''}"
-          ${locked || (!matsOk && action.consumes) ? 'disabled' : ''}
+          ${locked || (!affordable && !isActive) ? 'disabled' : ''}
           onclick="${isActive ? 'stopAction()' : `startAction('${skillId}','${action.id}')`}">
           ${isActive ? 'Stop' : 'Start'}
         </button>
@@ -445,26 +571,77 @@ function renderSkillTab(skillId) {
   document.getElementById(`tab-${skillId}`).innerHTML = html;
 }
 
+function renderEquipmentGrid() {
+  const slotMeta = {
+    weapon:    { label: "Weapon", icon: "🔫" },
+    head:      { label: "Head",   icon: "🎩" },
+    top:       { label: "Top",    icon: "🧥" },
+    bottom:    { label: "Bottom", icon: "👖" },
+    boots:     { label: "Boots",  icon: "👢" },
+    accessory: { label: "Extra",  icon: "⭐" },
+  };
+
+  const slotsHtml = EQUIP_SLOTS.map(slot => {
+    const equippedId = state.equipment[slot];
+    const equippedItem = equippedId ? ITEMS[equippedId] : null;
+    const owned = ownedItemsForSlot(slot);
+    const options = [];
+    if (slot !== "weapon") options.push(`<option value="">(empty)</option>`);
+    Array.from(new Set(owned)).forEach(id => {
+      const item = ITEMS[id];
+      if (!item) return;
+      options.push(`<option value="${id}" ${id === equippedId ? 'selected' : ''}>${item.name}</option>`);
+    });
+
+    let statLine = "";
+    if (equippedItem) {
+      if (equippedItem.type === "weapon") {
+        statLine = `${equippedItem.dmgMin}-${equippedItem.dmgMax} dmg`;
+      } else if (equippedItem.type === "armor") {
+        statLine = `+${equippedItem.defense} def`;
+      } else if (equippedItem.type === "accessory") {
+        const parts = [];
+        if (equippedItem.defense) parts.push(`+${equippedItem.defense} def`);
+        if (equippedItem.dmgBonusPct) parts.push(`+${Math.round(equippedItem.dmgBonusPct * 100)}% dmg`);
+        statLine = parts.join(", ");
+      }
+    }
+
+    return `
+      <div class="equip-slot">
+        <div class="equip-slot-label">${slotMeta[slot].label}</div>
+        <div class="equip-slot-icon">${equippedItem ? equippedItem.icon : slotMeta[slot].icon}</div>
+        <select onchange="equipItem('${slot}', this.value)">${options.join("")}</select>
+        <div class="equip-stat">${statLine}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `<div class="equipment-grid">${slotsHtml}</div>`;
+}
+
 function renderCombatTab() {
   const region = getRegion();
   const weapon = getEquippedWeapon();
-  const ownedWeapons = Object.keys(state.inventory).filter(id => ITEMS[id].type === "weapon" && ITEMS[id].combatLvl <= state.combat.level);
-  if (state.combat.equippedWeapon === "rusty_six_shooter") ownedWeapons.unshift("rusty_six_shooter");
-
-  const weaponOptions = Array.from(new Set(["rusty_six_shooter", ...ownedWeapons]))
-    .map(id => `<option value="${id}" ${id === state.combat.equippedWeapon ? 'selected' : ''}>${ITEMS[id].name}</option>`)
-    .join("");
+  const weaponClass = weapon.class;
+  const combatLevel = getHighestCombatLevel();
 
   const regionButtons = REGIONS.map(r => {
-    const locked = state.combat.level < r.unlockCombatLvl;
+    const locked = combatLevel < r.unlockCombatLvl;
     return `<button class="region-btn ${r.id === region.id ? 'active' : ''}" ${locked ? 'disabled' : ''}
       onclick="setRegion('${r.id}')">${r.name} ${locked ? `(Lv.${r.unlockCombatLvl})` : ''}</button>`;
   }).join("");
 
-  const combatXp = state.combat.xp;
-  const combatXpStart = xpForLevel(state.combat.level);
-  const combatXpEnd = xpForLevel(state.combat.level + 1);
-  const combatPct = state.combat.level >= 99 ? 100 : Math.floor(((combatXp - combatXpStart) / (combatXpEnd - combatXpStart)) * 100);
+  const trainedLevel = state.combatSkillLevels[weaponClass];
+  const trainedXp = state.combatSkillXp[weaponClass];
+  const xpStart = xpForLevel(trainedLevel);
+  const xpEnd = xpForLevel(trainedLevel + 1);
+  const combatPct = trainedLevel >= 99 ? 100 : Math.floor(((trainedXp - xpStart) / (xpEnd - xpStart)) * 100);
+
+  const skillBadges = Object.keys(COMBAT_SKILLS).map(id => {
+    const active = id === weaponClass;
+    return `<span ${active ? 'style="color:var(--gold);font-weight:bold;"' : ''}>${COMBAT_SKILLS[id].icon} ${COMBAT_SKILLS[id].name} Lv.${state.combatSkillLevels[id]}</span>`;
+  }).join(" &nbsp;·&nbsp; ");
 
   let monsterListHtml = "";
   if (!state.combat.inBattle) {
@@ -472,7 +649,7 @@ function renderCombatTab() {
       <div class="action-row">
         <div class="action-info">
           <div class="action-name">${m.icon} ${m.name}</div>
-          <div class="action-sub">HP ${m.hp} · ${m.dmgMin}-${m.dmgMax} dmg · ${m.xp} xp · ${m.goldMin}-${m.goldMax}$</div>
+          <div class="action-sub">HP ${m.hp} · ${m.dmgMin}-${m.dmgMax} dmg · ${m.xp} xp · $${m.goldMin}-${m.goldMax}</div>
         </div>
         <button class="action-btn" onclick="startBattle('${m.id}')">Engage</button>
       </div>
@@ -486,7 +663,7 @@ function renderCombatTab() {
     battleHtml = `
       <div class="combat-grid">
         <div class="combatant">
-          <div>🤠 You (Lv.${state.combat.level})</div>
+          <div>🤠 You</div>
           <div class="hp-bar-outer"><div class="hp-bar-inner" id="player-hp-bar" style="width:${(state.combat.hp/state.combat.maxHp)*100}%"></div></div>
           <div id="player-hp-text">${state.combat.hp} / ${state.combat.maxHp} HP</div>
         </div>
@@ -505,13 +682,20 @@ function renderCombatTab() {
     <div class="panel">
       <div class="skill-header">
         <h2>💀 Combat</h2>
-        <div class="level-badge" id="combat-level-badge">Lv. ${state.combat.level}</div>
+        <div class="level-badge" id="combat-level-badge">${COMBAT_SKILLS[weaponClass].name} Lv. ${trainedLevel}</div>
       </div>
       <div class="xp-bar-outer"><div class="xp-bar-inner" id="combat-xp-bar" style="width:${combatPct}%"></div></div>
-      <div class="equip-row">
-        <label>Weapon: <select onchange="equipWeapon(this.value)">${weaponOptions}</select></label>
-        <span class="action-sub">Dmg ${weapon.dmgMin}-${weapon.dmgMax} · Ammo: ${ITEMS[weapon.ammo].name} (<span id="ammo-count">${state.inventory[weapon.ammo]||0}</span>)</span>
+      <div class="combat-stats-summary">
+        <span>${skillBadges}</span>
       </div>
+      <div class="combat-stats-summary">
+        <span>❤️ Max HP: <b>${state.combat.maxHp}</b></span>
+        <span>🛡️ Defense: <b>${getTotalDefense()}</b></span>
+        <span>💥 Dmg Bonus: <b>${Math.round(getTotalDmgBonusPct()*100)}%</b></span>
+        <span>🔫 Weapon Dmg: <b>${weapon.dmgMin}-${weapon.dmgMax}</b></span>
+        ${weapon.ammo ? `<span>Ammo: <b id="ammo-count">${state.inventory[weapon.ammo]||0}</b> ${ITEMS[weapon.ammo].name}</span>` : ""}
+      </div>
+      ${renderEquipmentGrid()}
       <div class="region-select">${regionButtons}</div>
       ${monsterListHtml}
       ${battleHtml}
@@ -535,18 +719,20 @@ function updateCombatView() {
   if (playerText) playerText.textContent = `${Math.max(0,state.combat.hp)} / ${state.combat.maxHp} HP`;
   if (monsterText) monsterText.textContent = `${Math.max(0,state.combat.monsterHp)} / ${monsterDef.hp} HP`;
 
-  // Keep ammo count, combat level, and XP bar live too — these change on
-  // every shot/kill but previously only refreshed on tab-switch.
   const weapon = getEquippedWeapon();
+  const weaponClass = weapon.class;
   const ammoEl = document.getElementById("ammo-count");
-  if (ammoEl) ammoEl.textContent = state.inventory[weapon.ammo] || 0;
+  if (ammoEl && weapon.ammo) ammoEl.textContent = state.inventory[weapon.ammo] || 0;
+
   const levelBadge = document.getElementById("combat-level-badge");
-  if (levelBadge) levelBadge.textContent = `Lv. ${state.combat.level}`;
+  if (levelBadge) levelBadge.textContent = `${COMBAT_SKILLS[weaponClass].name} Lv. ${state.combatSkillLevels[weaponClass]}`;
+
   const xpBar = document.getElementById("combat-xp-bar");
   if (xpBar) {
-    const xpStart = xpForLevel(state.combat.level);
-    const xpEnd = xpForLevel(state.combat.level + 1);
-    const pct = state.combat.level >= 99 ? 100 : Math.floor(((state.combat.xp - xpStart) / (xpEnd - xpStart)) * 100);
+    const trainedLevel = state.combatSkillLevels[weaponClass];
+    const xpStart = xpForLevel(trainedLevel);
+    const xpEnd = xpForLevel(trainedLevel + 1);
+    const pct = trainedLevel >= 99 ? 100 : Math.floor(((state.combatSkillXp[weaponClass] - xpStart) / (xpEnd - xpStart)) * 100);
     xpBar.style.width = `${pct}%`;
   }
 }
@@ -559,16 +745,16 @@ function renderBankTab() {
       <tr>
         <td>${item.icon} ${item.name}</td>
         <td>${qty}</td>
-        <td>${item.sell}$</td>
+        <td>$${item.sell}</td>
         <td><button class="btn secondary" onclick="sellItem('${id}',1)">Sell 1</button>
             <button class="btn secondary" onclick="sellItem('${id}',${qty})">Sell All</button></td>
       </tr>
     `;
-  }).join("") || `<tr><td colspan="4">Your bank is empty. Go gather some resources!</td></tr>`;
+  }).join("") || `<tr><td colspan="4">Storage is empty. Go gather some resources!</td></tr>`;
 
   document.getElementById("tab-bank").innerHTML = `
     <div class="panel">
-      <div class="skill-header"><h2>🏦 Bank</h2><button class="btn danger" onclick="sellAll()">Sell Everything</button></div>
+      <div class="skill-header"><h2>🏚️ Storage</h2><button class="btn danger" onclick="sellAll()">Sell Everything</button></div>
       <table class="bank-table">
         <thead><tr><th>Item</th><th>Qty</th><th>Value</th><th>Actions</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -592,8 +778,17 @@ function render() {
   else if (activeTab === "bank") renderBankTab();
   else if (activeTab === "settings") renderSettingsTab();
   else renderSkillTab(activeTab);
-  updateActionBar();
+  updateInlineActionProgress();
   updateGoldDisplay();
+}
+
+function updateTabLockIndicators() {
+  document.querySelectorAll(".tab-btn[data-tab]").forEach(btn => {
+    const tabId = btn.dataset.tab;
+    if (SKILLS[tabId] && SKILLS[tabId].requires) {
+      btn.classList.toggle("soft-locked", !skillUnlocked(tabId));
+    }
+  });
 }
 
 function switchTab(tabId) {
@@ -610,9 +805,11 @@ function switchTab(tabId) {
 // ---------- Init ----------
 document.addEventListener("DOMContentLoaded", () => {
   simulateOffline();
+  recalcMaxHp();
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
+  updateTabLockIndicators();
   render();
 });
 
