@@ -90,6 +90,18 @@ function levelFromXp(xp) {
   return level;
 }
 
+// Builds a human-readable "123 / 456 XP (333 to next level)" string,
+// so players can see the numbers behind the bar, not just a % fill.
+// At level 99 there's no next level, so it just shows total XP.
+function formatXpLabel(level, xp) {
+  if (level >= 99) {
+    return `${xp.toLocaleString()} XP (max level)`;
+  }
+  const xpEnd = xpForLevel(level + 1);
+  const remaining = xpEnd - xp;
+  return `${xp.toLocaleString()} / ${xpEnd.toLocaleString()} XP (${remaining.toLocaleString()} to next level)`;
+}
+
 function addXp(skillId, amount) {
   state.skillXp[skillId] = (state.skillXp[skillId] || 0) + amount;
   const newLevel = levelFromXp(state.skillXp[skillId]);
@@ -549,6 +561,7 @@ function renderSkillTab(skillId) {
         <div class="level-badge">Lv. ${level}</div>
       </div>
       <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
+      <div class="xp-label">${formatXpLabel(level, xp)}</div>
       ${lockHtml}
       <div class="action-list">
   `;
@@ -715,6 +728,7 @@ function renderCombatTab() {
         <div class="level-badge" id="combat-level-badge">${COMBAT_SKILLS[weaponClass].name} Lv. ${trainedLevel}</div>
       </div>
       <div class="xp-bar-outer"><div class="xp-bar-inner" id="combat-xp-bar" style="width:${combatPct}%"></div></div>
+      <div class="xp-label" id="combat-xp-label">${formatXpLabel(trainedLevel, trainedXp)}</div>
       <div class="combat-stats-summary">
         <span>${skillBadges}</span>
       </div>
@@ -765,6 +779,11 @@ function updateCombatView() {
     const xpEnd = xpForLevel(trainedLevel + 1);
     const pct = trainedLevel >= 99 ? 100 : Math.floor(((state.combatSkillXp[weaponClass] - xpStart) / (xpEnd - xpStart)) * 100);
     xpBar.style.width = `${pct}%`;
+  }
+  const xpLabel = document.getElementById("combat-xp-label");
+  if (xpLabel) {
+    const trainedLevel = state.combatSkillLevels[weaponClass];
+    xpLabel.textContent = formatXpLabel(trainedLevel, state.combatSkillXp[weaponClass]);
   }
 }
 
