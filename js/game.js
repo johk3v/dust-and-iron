@@ -187,11 +187,16 @@ function startAction(skillId, actionId) {
     progress: 0,
     duration: action.time,
   };
+  // Persist immediately: if the page/tab is closed in the next few
+  // seconds (before the periodic autosave fires), the in-progress
+  // action must already be on disk or offline progress can't resume it.
+  saveState();
   render();
 }
 
 function stopAction() {
   state.currentAction = null;
+  saveState();
   render();
 }
 
@@ -813,4 +818,12 @@ document.addEventListener("DOMContentLoaded", () => {
   render();
 });
 
+// beforeunload is unreliable on mobile browsers and when a tab/app is
+// killed rather than navigated away from. visibilitychange + pagehide
+// cover those cases too, so progress is saved the moment the page is
+// hidden/closed, not just on a clean desktop unload.
 window.addEventListener("beforeunload", saveState);
+window.addEventListener("pagehide", saveState);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveState();
+});
