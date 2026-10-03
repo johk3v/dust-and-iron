@@ -15,9 +15,24 @@ const ITEMS = {
   coal:         { name: "Coal",         icon: "⚫", type: "ore",  sell: 4 },
 
   // Woodcutting
-  pine_wood:    { name: "Pine Wood",    icon: "🪵", type: "wood", sell: 2 },
-  oak_wood:     { name: "Oak Wood",     icon: "🪵", type: "wood", sell: 6 },
-  ironwood:     { name: "Ironwood",     icon: "🪵", type: "wood", sell: 15 },
+  pine_wood:     { name: "Pine Wood",     icon: "🪵", type: "wood", sell: 2 },
+  alder_wood:    { name: "Alder Wood",    icon: "🌳", type: "wood", sell: 4 },
+  fir_wood:      { name: "Fir Wood",      icon: "🌲", type: "wood", sell: 7 },
+  maple_wood:    { name: "Maple Wood",    icon: "🍁", type: "wood", sell: 10 },
+  oak_wood:      { name: "Oak Wood",      icon: "🪵", type: "wood", sell: 14 },
+  ironwood:      { name: "Ironwood",      icon: "🪵", type: "wood", sell: 22 },
+  mesquite_wood: { name: "Mesquite Wood", icon: "🌵", type: "wood", sell: 32 },
+  redwood_wood:  { name: "Redwood Wood",  icon: "🎄", type: "wood", sell: 48 },
+
+  // Prospecting
+  limestone:    { name: "Limestone",    icon: "🪨", type: "ore",  sell: 3 },
+  bronze_ore:   { name: "Bronze Scraps",icon: "🟫", type: "ore",  sell: 8 },
+
+  // Farming
+  potato:       { name: "Potato",       icon: "🥔", type: "produce", sell: 3 },
+  carrot:       { name: "Carrot",       icon: "🥕", type: "produce", sell: 3 },
+  tomato:       { name: "Tomato",       icon: "🍅", type: "produce", sell: 4 },
+  corn:         { name: "Corn",         icon: "🌽", type: "produce", sell: 5 },
 
   // Farming
   egg:          { name: "Egg",          icon: "🥚", type: "produce", sell: 1 },
@@ -42,7 +57,10 @@ const ITEMS = {
   legendary_catfish:  { name: "Legendary Catfish",  icon: "🏆", type: "food", heal: 55, sell: 60 },
 
   // Farming produce doubles as basic trail food
-  trail_jerky:        { name: "Trail Jerky",        icon: "🥓", type: "food", heal: 6,  sell: 4 },
+
+  // ---------------- Store-exclusive basic goods ----------------
+  trail_rations:    { name: "Trail Rations",    icon: "🥫", type: "food", heal: 12, sell: 5 },
+  canteen_of_water: { name: "Canteen of Water", icon: "🧴", type: "food", heal: 5,  sell: 2 },
 
   // ---------------- Craftsmanship: bars ----------------
   bronze_bar:   { name: "Bronze Bar",   icon: "🔶", type: "bar",  sell: 6 },
@@ -125,8 +143,13 @@ const SKILLS = {
     icon: "🪓",
     actions: [
       { id: "chop_pine",     name: "Chop Pine",     level: 1,  xp: 4,  time: 2.0, yields: [{ item: "pine_wood", qty: 1 }] },
-      { id: "chop_oak",      name: "Chop Oak",      level: 12, xp: 13, time: 2.8, yields: [{ item: "oak_wood", qty: 1 }] },
-      { id: "chop_ironwood", name: "Chop Ironwood", level: 28, xp: 27, time: 3.8, yields: [{ item: "ironwood", qty: 1 }] },
+      { id: "chop_alder",    name: "Chop Alder",    level: 6,  xp: 7,  time: 2.3, yields: [{ item: "alder_wood", qty: 1 }] },
+      { id: "chop_fir",      name: "Chop Fir",      level: 12, xp: 11, time: 2.6, yields: [{ item: "fir_wood", qty: 1 }] },
+      { id: "chop_maple",    name: "Chop Maple",    level: 18, xp: 16, time: 3.0, yields: [{ item: "maple_wood", qty: 1 }] },
+      { id: "chop_oak",      name: "Chop Oak",      level: 24, xp: 21, time: 3.3, yields: [{ item: "oak_wood", qty: 1 }] },
+      { id: "chop_ironwood", name: "Chop Ironwood", level: 32, xp: 29, time: 3.8, yields: [{ item: "ironwood", qty: 1 }] },
+      { id: "chop_mesquite", name: "Chop Mesquite", level: 40, xp: 38, time: 4.3, yields: [{ item: "mesquite_wood", qty: 1 }] },
+      { id: "chop_redwood",  name: "Chop Redwood",  level: 50, xp: 50, time: 5.0, yields: [{ item: "redwood_wood", qty: 1 }] },
     ],
   },
 
@@ -134,12 +157,14 @@ const SKILLS = {
     name: "Prospecting",
     icon: "⛏️",
     actions: [
-      { id: "pan_copper",  name: "Pan for Copper Ore", level: 1,  xp: 4,  time: 2.2, yields: [{ item: "copper_ore", qty: 1 }] },
-      { id: "pan_tin",     name: "Pan for Tin Ore",    level: 1,  xp: 4,  time: 2.2, yields: [{ item: "tin_ore", qty: 1 }] },
-      { id: "dig_coal",    name: "Dig for Coal",       level: 5,  xp: 7,  time: 2.6, yields: [{ item: "coal", qty: 1 }] },
-      { id: "dig_iron",    name: "Dig for Iron Ore",   level: 10, xp: 11, time: 3.0, yields: [{ item: "iron_ore", qty: 1 }] },
-      { id: "pan_silver",  name: "Pan for Silver Ore", level: 20, xp: 19, time: 3.6, yields: [{ item: "silver_ore", qty: 1 }] },
-      { id: "pan_gold",    name: "Pan for Gold Ore",   level: 35, xp: 32, time: 4.4, yields: [{ item: "gold_ore", qty: 1 }] },
+      { id: "pan_copper",    name: "Pan for Copper Ore",  level: 1,  xp: 4,  time: 2.2, yields: [{ item: "copper_ore", qty: 1 }] },
+      { id: "pan_tin",       name: "Pan for Tin Ore",     level: 1,  xp: 4,  time: 2.2, yields: [{ item: "tin_ore", qty: 1 }] },
+      { id: "dig_iron",      name: "Dig for Iron Ore",    level: 10, xp: 11, time: 3.0, yields: [{ item: "iron_ore", qty: 1 }] },
+      { id: "scavenge_bronze", name: "Scavenge Bronze Scraps", level: 15, xp: 14, time: 3.2, yields: [{ item: "bronze_ore", qty: 1 }] },
+      { id: "quarry_limestone", name: "Quarry Limestone", level: 18, xp: 16, time: 3.3, yields: [{ item: "limestone", qty: 1 }] },
+      { id: "pan_silver",    name: "Pan for Silver Ore",  level: 20, xp: 19, time: 3.6, yields: [{ item: "silver_ore", qty: 1 }] },
+      { id: "pan_gold",      name: "Pan for Gold Ore",    level: 35, xp: 32, time: 4.4, yields: [{ item: "gold_ore", qty: 1 }] },
+      { id: "dig_coal",      name: "Dig for Coal",        level: 5,  xp: 7,  time: 2.6, yields: [{ item: "coal", qty: 1 }] },
     ],
   },
 
@@ -149,10 +174,12 @@ const SKILLS = {
     actions: [
       { id: "tend_chickens", name: "Tend Chickens", level: 1,  xp: 4,  time: 2.0, yields: [{ item: "egg", qty: 1 }] },
       { id: "milk_cow",      name: "Milk the Cow",  level: 1,  xp: 4,  time: 2.2, yields: [{ item: "milk", qty: 1 }] },
+      { id: "grow_potatoes", name: "Grow Potatoes", level: 4,  xp: 6,  time: 2.4, yields: [{ item: "potato", qty: 1 }] },
+      { id: "grow_carrots",  name: "Grow Carrots",  level: 7,  xp: 8,  time: 2.5, yields: [{ item: "carrot", qty: 1 }] },
       { id: "grow_wheat",    name: "Grow Wheat",    level: 6,  xp: 8,  time: 2.6, yields: [{ item: "wheat", qty: 1 }] },
+      { id: "grow_tomatoes", name: "Grow Tomatoes", level: 9,  xp: 10, time: 2.7, yields: [{ item: "tomato", qty: 1 }] },
+      { id: "grow_corn",     name: "Grow Corn",     level: 12, xp: 12, time: 2.9, yields: [{ item: "corn", qty: 1 }] },
       { id: "herd_cattle",   name: "Herd Cattle",   level: 10, xp: 11, time: 3.0, yields: [{ item: "cattle_hide", qty: 1 }] },
-      { id: "smoke_jerky",   name: "Smoke Trail Jerky", level: 10, xp: 12, time: 3.2,
-        consumes: [{ item: "cattle_hide", qty: 1 }], yields: [{ item: "trail_jerky", qty: 2 }] },
       { id: "grow_cotton",   name: "Grow Cotton",   level: 16, xp: 15, time: 3.4, yields: [{ item: "cotton", qty: 1 }] },
     ],
   },
@@ -354,6 +381,37 @@ const REGIONS = [
         loot: [{ item: "ghost_dust", chance: 0.08, qty: 1 }, { item: "steel_bullet", chance: 0.4, qty: 10 }] },
       { id: "desert_wraith", name: "Desert Wraith", icon: "👻", hp: 260, dmgMin: 22, dmgMax: 38, speed: 1.9, xp: 150, goldMin: 60, goldMax: 110,
         loot: [{ item: "ghost_dust", chance: 0.12, qty: 1 }] },
+    ],
+  },
+];
+
+// ------------------------------------------------------------
+// STORE — the game's economy. Entirely separate from the skill
+// tree: sections unlock based on arbitrary conditions (right now
+// just "perform this action N times") rather than skill levels,
+// so the Store can grow independently later (new sections keyed
+// off Settlement buildings, Debauchery reputation, etc).
+// Each section's `items` list is its loot/goods table: a flat
+// price in gold for a fixed quantity of a basic item.
+// ------------------------------------------------------------
+
+const STORE_SECTIONS = [
+  {
+    id: "trading_post",
+    name: "Trading Post",
+    icon: "🤝",
+    description: "A dusty counter at the edge of town. The trader will sell you the basics once you've proven you know the trails.",
+    unlock: { type: "actionCount", actionId: "scout_trails", count: 10, label: "Scout Local Trails (Exploration)" },
+    items: [
+      { item: "lead_bullet",       qty: 10, price: 15 },
+      { item: "trail_rations",     qty: 1,  price: 12 },
+      { item: "canteen_of_water",  qty: 1,  price: 5 },
+      { item: "worn_boots",        qty: 1,  price: 10 },
+      { item: "leather_hat",       qty: 1,  price: 25 },
+      { item: "leather_vest",      qty: 1,  price: 35 },
+      { item: "pine_wood",         qty: 5,  price: 8 },
+      { item: "potato",            qty: 5,  price: 6 },
+      { item: "egg",               qty: 5,  price: 4 },
     ],
   },
 ];

@@ -43,6 +43,7 @@ function freshState() {
       monsterAttackCd: 0,
     },
     currentAction: null, // { skillId, actionId, progress (0-1), duration }
+    actionCounts: {}, // actionId -> number of times completed (success or fail), powers Store unlocks
     lastSeen: Date.now(),
   };
 }
@@ -63,6 +64,7 @@ function loadState() {
     merged.skillXp = Object.assign({}, fresh.skillXp, parsed.skillXp || {});
     merged.combatSkillLevels = Object.assign({}, fresh.combatSkillLevels, parsed.combatSkillLevels || {});
     merged.combatSkillXp = Object.assign({}, fresh.combatSkillXp, parsed.combatSkillXp || {});
+    merged.actionCounts = Object.assign({}, fresh.actionCounts, parsed.actionCounts || {});
     return merged;
   } catch (e) {
     console.warn("Save corrupted, starting fresh", e);
@@ -168,6 +170,37 @@ function hasItems(consumes) {
   return consumes.every(c => (state.inventory[c.item] || 0) >= c.qty);
 }
 
+// ---------- Store (economy) ----------
+function storeSectionUnlocked(section) {
+  const u = section.unlock;
+  if (!u) return true;
+  if (u.type === "actionCount") {
+    return (state.actionCounts[u.actionId] || 0) >= u.count;
+  }
+  return true;
+}
+
+function storeSectionProgress(section) {
+  const u = section.unlock;
+  if (!u || u.type !== "actionCount") return null;
+  return { have: state.actionCounts[u.actionId] || 0, need: u.count, label: u.label };
+}
+
+function buyStoreItem(sectionId, itemIndex) {
+  const section = STORE_SECTIONS.find(s => s.id === sectionId);
+  if (!section || !storeSectionUnlocked(section)) return;
+  const entry = section.items[itemIndex];
+  if (!entry) return;
+  if (state.gold < entry.price) {
+    toast("Not enough gold!");
+    return;
+  }
+  state.gold -= entry.price;
+  addItem(entry.item, entry.qty);
+  toast(`Bought ${ITEMS[entry.item].icon} ${ITEMS[entry.item].name} x${entry.qty}.`);
+  render();
+}
+
 // ---------- Actions (gathering/production/risk) ----------
 function findAction(skillId, actionId) {
   return SKILLS[skillId].actions.find(a => a.id === actionId);
@@ -220,6 +253,11 @@ function resolveActionCycle(skillId, action) {
 
   if (action.goldCost) state.gold -= action.goldCost;
   if (action.consumes) action.consumes.forEach(c => removeItem(c.item, c.qty));
+
+  // Tracks how many times each action has ever completed (success or
+  // fail) — used to power Store section unlocks (e.g. "scout trails
+  // 10 times"), independent of skill levels.
+  state.actionCounts[action.id] = (state.actionCounts[action.id] || 0) + 1;
 
   const success = action.successChance === undefined || Math.random() < action.successChance;
 
@@ -816,6 +854,51 @@ function renderBankTab() {
   `;
 }
 
+function renderStoreTab() {
+  const sectionsHtml = STORE_SECTIONS.map(section => {
+    const unlocked = storeSectionUnlocked(section);
+    const progress = storeSectionProgress(section);
+
+    let lockHtml = "";
+    if (!unlocked && progress) {
+      lockHtml = `
+        <div class="lock-banner">
+          <strong>🔒 ${section.name} is locked.</strong>
+          <div class="lock-req unmet">✗ ${progress.label}: ${progress.have} / ${progress.need}</div>
+        </div>
+      `;
+    }
+
+    const rowsHtml = section.items.map((entry, idx) => {
+      const item = ITEMS[entry.item];
+      const affordable = state.gold >= entry.price;
+      return `
+        <div class="action-row ${!unlocked ? 'locked' : ''}">
+          <div class="action-info">
+            <div class="action-name">${item.icon} ${item.name} x${entry.qty}</div>
+            <div class="action-sub">$${entry.price}</div>
+          </div>
+          <button class="action-btn" ${!unlocked || !affordable ? 'disabled' : ''}
+            onclick="buyStoreItem('${section.id}', ${idx})">Buy</button>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="panel">
+        <div class="skill-header">
+          <h2>${section.icon} ${section.name}</h2>
+        </div>
+        <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">${section.description}</p>
+        ${lockHtml}
+        <div class="action-list">${rowsHtml}</div>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("tab-store").innerHTML = sectionsHtml;
+}
+
 function renderSettingsTab() {
   document.getElementById("tab-settings").innerHTML = `
     <div class="panel">
@@ -829,6 +912,7 @@ function renderSettingsTab() {
 function render() {
   if (activeTab === "combat") renderCombatTab();
   else if (activeTab === "bank") renderBankTab();
+  else if (activeTab === "store") renderStoreTab();
   else if (activeTab === "settings") renderSettingsTab();
   else renderSkillTab(activeTab);
   updateInlineActionProgress();
@@ -844,6 +928,10 @@ function updateTabLockIndicators() {
     const tabId = btn.dataset.tab;
     if (SKILLS[tabId] && SKILLS[tabId].requires) {
       btn.classList.toggle("soft-locked", !skillUnlocked(tabId));
+    }
+    if (tabId === "store") {
+      const anyUnlocked = STORE_SECTIONS.some(s => storeSectionUnlocked(s));
+      btn.classList.toggle("soft-locked", !anyUnlocked);
     }
   });
 }

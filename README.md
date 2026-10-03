@@ -18,16 +18,16 @@ Progress autosaves to `localStorage` every 5 seconds, and the game simulates off
 ## Current features (v2)
 
 ### Non-combat skills
-- **Woodcutting** — chop pine, oak, and ironwood
-- **Prospecting** — pan/dig for copper, tin, coal, iron, silver, and gold ore
-- **Farming** — tend chickens, milk cows, grow wheat/cotton, herd cattle, smoke trail jerky
+- **Woodcutting** — chop Pine, Alder, Fir, Maple, Oak, Ironwood, Mesquite, and Redwood (8 tiers)
+- **Prospecting** — pan/dig/quarry Copper, Tin, Coal, Iron, Bronze, Limestone, Silver, and Gold
+- **Farming** — tend chickens, milk cows, grow Potatoes/Carrots/Wheat/Tomatoes/Corn/Cotton, herd cattle
 - **Fishing** — catch trout, catfish, bass, salmon, sturgeon, and a rare Legendary Catfish; catches double as food
-- **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail)
+- **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail); scouting trails also feeds the Store's Trading Post unlock
 - **Craftsmanship** — smelt bars and craft weapons, ammo, and armor. *Soft-locked* until Prospecting 5 + Woodcutting 5.
 - **Settlement** — build up the town (well, saloon, bank vault, railroad...). *Soft-locked* until Craftsmanship 10 + Farming 5.
 - **Debauchery** — gamble, drink, and brawl for gold and rare charms. *Soft-locked* until Settlement 10 + Exploration 10.
 
-Soft-locked skills stay visible in the nav (marked with 🔒) so you always know what's coming, but their actions can't be run until the prerequisites are met. The lock indicator now clears live the moment the requirement is met, no reload needed.
+Soft-locked skills stay visible in the nav (marked with 🔒) so you always know what's coming, but their actions can't be run until the prerequisites are met. The lock indicator clears live the moment the requirement is met, no reload needed.
 
 ### Combat
 Three independently-trained combat skills, each leveled by equipping the matching weapon class and fighting with it:
@@ -42,8 +42,10 @@ Six gear slots: **Weapon**, **Head**, **Top**, **Bottom**, **Boots**, and an **E
 
 ### Other
 - **Storage** — view and sell your inventory (formerly "Bank"); food items show an "Eat" button to heal HP
-- Food/healing: Fishing catches and Trail Jerky (from Farming) restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting
-- Gold-colored XP bars; inline per-activity progress bars right in each action row
+- **Store** — the game's economy, a separate tab from Storage. Sections unlock based on progress (not skill level) — e.g. the **Trading Post** unlocks after Scouting Local Trails 10 times — and sell a flat-price loot table of basic goods (ammo, food, starter armor, raw materials) for gold. More sections can be added later gated behind Settlement buildings or other milestones.
+- Food/healing: Fishing catches and Store rations restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting
+- Gold-colored XP bars with a numeric XP readout (e.g. "108 / 210 XP (102 to next level)") under every bar, skill and combat alike
+- Inline per-activity progress bars right in each action row
 - Currency displayed as `$123` instead of "123 Dollars"
 - Melvor-style exponential XP curve and leveling (same curve for all non-combat and combat skills)
 
