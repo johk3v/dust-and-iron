@@ -6,6 +6,12 @@
 
 const ITEMS = {
   // ---------------- Raw resources ----------------
+  // Construction materials (Settlement) — the only two Settlement
+  // actions buildable standalone; every building/addition consumes
+  // some number of these plus other materials.
+  foundation:   { name: "Foundation",   icon: "🧱", type: "material", sell: 0 },
+  wall:         { name: "Wall",         icon: "🧱", type: "material", sell: 0 },
+
   // Prospecting
   copper_ore:   { name: "Copper Ore",   icon: "🟤", type: "ore",  sell: 2 },
   tin_ore:      { name: "Tin Ore",      icon: "⚪", type: "ore",  sell: 2 },
@@ -229,28 +235,30 @@ const SKILLS = {
       { id: "smelt_gold",   name: "Smelt Gold Bar",   level: 30, xp: 34, time: 4.0,
         consumes: [{ item: "gold_ore", qty: 1 }], yields: [{ item: "gold_bar", qty: 1 }] },
 
-      // Weapons
-      { id: "craft_bronze_knuckles", name: "Craft Bronze Knuckles", level: 1, xp: 15, time: 4.0,
+      // Weapons. weaponRecipe: true lets a built Gunsmith Wing (Settlement)
+      // boost xp gained via getSettlementBuff('craft_weapon_xp_pct').
+      { id: "craft_bronze_knuckles", name: "Craft Bronze Knuckles", level: 1, xp: 15, time: 4.0, weaponRecipe: true,
         consumes: [{ item: "bronze_bar", qty: 2 }, { item: "pine_wood", qty: 1 }], yields: [{ item: "bronze_knuckles", qty: 1 }] },
-      { id: "craft_bronze_revolver", name: "Craft Bronze Revolver", level: 5, xp: 28, time: 5.0,
+      { id: "craft_bronze_revolver", name: "Craft Bronze Revolver", level: 5, xp: 28, time: 5.0, weaponRecipe: true,
         consumes: [{ item: "bronze_bar", qty: 4 }, { item: "oak_wood", qty: 1 }], yields: [{ item: "bronze_revolver", qty: 1 }] },
-      { id: "craft_steel_revolver", name: "Craft Steel Revolver", level: 15, xp: 48, time: 6.0,
+      { id: "craft_steel_revolver", name: "Craft Steel Revolver", level: 15, xp: 48, time: 6.0, weaponRecipe: true,
         consumes: [{ item: "steel_bar", qty: 5 }, { item: "oak_wood", qty: 2 }], yields: [{ item: "steel_revolver", qty: 1 }] },
-      { id: "craft_steel_tomahawk", name: "Craft Steel Tomahawk", level: 20, xp: 55, time: 6.5,
+      { id: "craft_steel_tomahawk", name: "Craft Steel Tomahawk", level: 20, xp: 55, time: 6.5, weaponRecipe: true,
         consumes: [{ item: "steel_bar", qty: 5 }, { item: "ironwood", qty: 2 }], yields: [{ item: "steel_tomahawk", qty: 1 }] },
-      { id: "craft_hunting_rifle", name: "Craft Hunting Rifle", level: 25, xp: 70, time: 7.5,
+      { id: "craft_hunting_rifle", name: "Craft Hunting Rifle", level: 25, xp: 70, time: 7.5, weaponRecipe: true,
         consumes: [{ item: "steel_bar", qty: 6 }, { item: "ironwood", qty: 2 }], yields: [{ item: "hunting_rifle", qty: 1 }] },
-      { id: "craft_silver_rifle", name: "Craft Silver-Plated Rifle", level: 35, xp: 110, time: 9.0,
+      { id: "craft_silver_rifle", name: "Craft Silver-Plated Rifle", level: 35, xp: 110, time: 9.0, weaponRecipe: true,
         consumes: [{ item: "silver_bar", qty: 6 }, { item: "steel_bar", qty: 4 }, { item: "ironwood", qty: 3 }], yields: [{ item: "silver_rifle", qty: 1 }] },
-      { id: "craft_golden_peacemaker", name: "Craft Golden Peacemaker", level: 50, xp: 220, time: 12.0,
+      { id: "craft_golden_peacemaker", name: "Craft Golden Peacemaker", level: 50, xp: 220, time: 12.0, weaponRecipe: true,
         consumes: [{ item: "gold_bar", qty: 8 }, { item: "steel_bar", qty: 6 }, { item: "ironwood", qty: 4 }], yields: [{ item: "golden_peacemaker", qty: 1 }] },
 
-      // Ammo
-      { id: "craft_lead_bullet", name: "Cast Lead Bullets (x10)", level: 1, xp: 3, time: 1.4,
+      // Ammo. ammoRecipe: true lets a built Armory (Settlement) discount
+      // the bar cost via getSettlementBuff('ammo_discount_pct').
+      { id: "craft_lead_bullet", name: "Cast Lead Bullets (x10)", level: 1, xp: 3, time: 1.4, ammoRecipe: true,
         consumes: [{ item: "bronze_bar", qty: 1 }], yields: [{ item: "lead_bullet", qty: 10 }] },
-      { id: "craft_steel_bullet", name: "Cast Steel Bullets (x10)", level: 12, xp: 9, time: 1.8,
+      { id: "craft_steel_bullet", name: "Cast Steel Bullets (x10)", level: 12, xp: 9, time: 1.8, ammoRecipe: true,
         consumes: [{ item: "steel_bar", qty: 1 }], yields: [{ item: "steel_bullet", qty: 10 }] },
-      { id: "craft_rifle_round", name: "Cast Rifle Rounds (x10)", level: 20, xp: 14, time: 2.2,
+      { id: "craft_rifle_round", name: "Cast Rifle Rounds (x10)", level: 20, xp: 14, time: 2.2, ammoRecipe: true,
         consumes: [{ item: "steel_bar", qty: 1 }, { item: "silver_bar", qty: 1 }], yields: [{ item: "rifle_round", qty: 10 }] },
 
       // Armor
@@ -286,18 +294,12 @@ const SKILLS = {
     icon: "🏘️",
     requires: [{ skill: "craftsmanship", level: 10 }, { skill: "farming", level: 5 }],
     actions: [
-      { id: "lay_foundations", name: "Lay Foundations",   level: 1,  xp: 10, time: 3.0, goldCost: 20,
-        consumes: [{ item: "pine_wood", qty: 3 }] },
-      { id: "build_well",      name: "Build a Well",      level: 5,  xp: 18, time: 3.6, goldCost: 40,
-        consumes: [{ item: "iron_bar", qty: 2 }] },
-      { id: "build_saloon",    name: "Build the Saloon",  level: 10, xp: 30, time: 4.5, goldCost: 80,
-        consumes: [{ item: "oak_wood", qty: 4 }, { item: "iron_bar", qty: 3 }] },
-      { id: "build_bank_vault",name: "Build a Bank Vault", level: 18, xp: 45, time: 5.5, goldCost: 150,
-        consumes: [{ item: "steel_bar", qty: 4 }] },
-      { id: "appoint_sheriff", name: "Appoint a Sheriff", level: 25, xp: 60, time: 6.5, goldCost: 250, successChance: 0.5,
-        consumes: [{ item: "silver_bar", qty: 3 }, { item: "cotton", qty: 5 }], yields: [{ item: "sheriff_badge", qty: 1 }] },
-      { id: "charter_railroad",name: "Charter a Railroad", level: 35, xp: 90, time: 8.0, goldCost: 500,
-        consumes: [{ item: "steel_bar", qty: 8 }, { item: "ironwood", qty: 4 }] },
+      // The only two Settlement actions buildable standalone — every
+      // building and addition below consumes some number of these.
+      { id: "lay_foundation", name: "Lay a Foundation", level: 1, xp: 8,  time: 2.4, goldCost: 8,
+        yields: [{ item: "foundation", qty: 1 }] },
+      { id: "build_wall",      name: "Build a Wall",     level: 1, xp: 5,  time: 1.8, goldCost: 4,
+        consumes: [{ item: "pine_wood", qty: 1 }], yields: [{ item: "wall", qty: 1 }] },
     ],
   },
 
@@ -412,6 +414,150 @@ const STORE_SECTIONS = [
       { item: "pine_wood",         qty: 5,  price: 8 },
       { item: "potato",            qty: 5,  price: 6 },
       { item: "egg",               qty: 5,  price: 4 },
+    ],
+  },
+];
+
+// ------------------------------------------------------------
+// SETTLEMENT: BUILDINGS
+// Every building needs `foundation` + `wall` (produced by the two
+// standalone Settlement actions above) plus whatever other materials
+// are listed, i.e. "everything requires a foundation and a number
+// of walls — those two are the only things buildable by themselves."
+//
+// A building is a `stages` array. Stage 0 is the base structure;
+// later stages are ADDITIONS that require the previous stage already
+// built (you can't build a Gambling Room before the Saloon exists).
+// Some buildings only ever have one stage (nothing to add onto).
+// Each stage grants a permanent buff the moment it's constructed —
+// see getSettlementBuff() in game.js for how each buff.type is
+// actually applied in the engine.
+// ------------------------------------------------------------
+
+const BUILDINGS = [
+  // ---- Example 1: Saloon chain (exactly as requested) ----
+  {
+    id: "saloon",
+    name: "Saloon",
+    icon: "🍺",
+    description: "The heart of frontier nightlife. Build it, then add onto it over time.",
+    stages: [
+      {
+        id: "saloon_base",
+        name: "Saloon",
+        level: 10,
+        cost: { foundation: 5, wall: 8, oak_wood: 4, iron_bar: 3 },
+        goldCost: 80, xp: 30,
+        buff: { type: "debauchery_gold_pct", value: 0.05, label: "+5% gold from Debauchery" },
+      },
+      {
+        id: "saloon_gambling_room",
+        name: "+ Gambling Room",
+        level: 16,
+        cost: { foundation: 3, wall: 4, silver_bar: 2 },
+        goldCost: 150, xp: 45,
+        buff: { type: "debauchery_gold_pct", value: 0.10, label: "+10% gold from Debauchery" },
+      },
+      {
+        id: "saloon_speakeasy",
+        name: "+ Speakeasy",
+        level: 24,
+        cost: { foundation: 4, wall: 6, steel_bar: 3, cotton: 5 },
+        goldCost: 300, xp: 65,
+        buff: { type: "debauchery_success_pct", value: 0.15, label: "+15% success chance on Debauchery games" },
+      },
+    ],
+  },
+
+  // ---- Example 2: Blacksmith's Forge chain ----
+  {
+    id: "forge",
+    name: "Blacksmith's Forge",
+    icon: "⚒️",
+    description: "Where the town's ore becomes bars, bullets, and blades. Expand it as Craftsmanship grows.",
+    stages: [
+      {
+        id: "forge_base",
+        name: "Blacksmith's Forge",
+        level: 8,
+        cost: { foundation: 4, wall: 6, iron_bar: 2 },
+        goldCost: 60, xp: 25,
+        buff: { type: "ammo_bonus_pct", value: 0.10, label: "+10% ammo yield from casting" },
+      },
+      {
+        id: "forge_gunsmith_wing",
+        name: "+ Gunsmith Wing",
+        level: 20,
+        cost: { foundation: 3, wall: 5, steel_bar: 3 },
+        goldCost: 180, xp: 55,
+        buff: { type: "craft_weapon_xp_pct", value: 0.15, label: "+15% XP crafting weapons" },
+      },
+      {
+        id: "forge_vault_room",
+        name: "+ Vault Room",
+        level: 28,
+        cost: { foundation: 5, wall: 8, steel_bar: 4, silver_bar: 2 },
+        goldCost: 350, xp: 70,
+        buff: { type: "death_gold_loss_reduction_pct", value: 0.5, label: "Halves gold lost when knocked out" },
+      },
+    ],
+  },
+
+  // ---- Simple one-off buildings (no additions) ----
+  {
+    id: "well",
+    name: "Well",
+    icon: "🪣",
+    description: "Clean water for the whole settlement.",
+    stages: [
+      {
+        id: "well_base", name: "Well", level: 5,
+        cost: { foundation: 2, wall: 2, iron_bar: 2 },
+        goldCost: 40, xp: 18,
+        buff: { type: "offline_cap_hours_bonus", value: 2, label: "+2 hours to offline progress cap" },
+      },
+    ],
+  },
+  {
+    id: "bank_vault",
+    name: "Bank Vault",
+    icon: "🏦",
+    description: "A reinforced steel vault for the town's gold reserves.",
+    stages: [
+      {
+        id: "bank_vault_base", name: "Bank Vault", level: 18,
+        cost: { foundation: 4, wall: 6, steel_bar: 4 },
+        goldCost: 150, xp: 45,
+        buff: { type: "sell_price_pct", value: 0.05, label: "+5% gold from selling items" },
+      },
+    ],
+  },
+  {
+    id: "sheriff_office",
+    name: "Sheriff's Office",
+    icon: "🌟",
+    description: "Law and order, frontier-style. Appointing a sheriff grants the whole town extra protection.",
+    stages: [
+      {
+        id: "sheriff_office_base", name: "Sheriff's Office", level: 25,
+        cost: { foundation: 3, wall: 4, silver_bar: 3, cotton: 5 },
+        goldCost: 250, xp: 60,
+        buff: { type: "global_defense", value: 2, label: "+2 Defense in all combat" },
+      },
+    ],
+  },
+  {
+    id: "railroad_depot",
+    name: "Railroad Depot",
+    icon: "🚂",
+    description: "Charter a railroad line and connect the settlement to the wider frontier economy.",
+    stages: [
+      {
+        id: "railroad_depot_base", name: "Railroad Depot", level: 35,
+        cost: { foundation: 6, wall: 10, steel_bar: 8, ironwood: 4 },
+        goldCost: 500, xp: 90,
+        buff: { type: "sell_price_pct", value: 0.10, label: "+10% gold from selling items" },
+      },
     ],
   },
 ];

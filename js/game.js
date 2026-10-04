@@ -44,6 +44,7 @@ function freshState() {
     },
     currentAction: null, // { skillId, actionId, progress (0-1), duration }
     actionCounts: {}, // actionId -> number of times completed (success or fail), powers Store unlocks
+    constructedBuildings: [], // array of building-stage ids, in construction order
     lastSeen: Date.now(),
   };
 }
@@ -65,6 +66,7 @@ function loadState() {
     merged.combatSkillLevels = Object.assign({}, fresh.combatSkillLevels, parsed.combatSkillLevels || {});
     merged.combatSkillXp = Object.assign({}, fresh.combatSkillXp, parsed.combatSkillXp || {});
     merged.actionCounts = Object.assign({}, fresh.actionCounts, parsed.actionCounts || {});
+    merged.constructedBuildings = parsed.constructedBuildings || fresh.constructedBuildings;
     return merged;
   } catch (e) {
     console.warn("Save corrupted, starting fresh", e);
@@ -201,6 +203,64 @@ function buyStoreItem(sectionId, itemIndex) {
   render();
 }
 
+// ---------- Settlement / Buildings ----------
+// A building stage is "built" once its id is in state.constructedBuildings.
+function isStageBuilt(stageId) {
+  return state.constructedBuildings.includes(stageId);
+}
+
+// Which stage of a building is next to build (0 = base, not started yet).
+// Returns null if the whole building (all stages) is already complete.
+function nextStageIndex(building) {
+  for (let i = 0; i < building.stages.length; i++) {
+    if (!isStageBuilt(building.stages[i].id)) return i;
+  }
+  return null;
+}
+
+function canAffordStage(stage) {
+  if (stage.goldCost && state.gold < stage.goldCost) return false;
+  const cost = stage.cost || {};
+  return Object.keys(cost).every(item => (state.inventory[item] || 0) >= cost[item]);
+}
+
+function buildStage(buildingId) {
+  const building = BUILDINGS.find(b => b.id === buildingId);
+  if (!building) return;
+  const idx = nextStageIndex(building);
+  if (idx === null) return; // already fully built
+  const stage = building.stages[idx];
+  if (state.skillLevels.settlement < stage.level) {
+    toast(`Need Settlement level ${stage.level}`);
+    return;
+  }
+  if (!canAffordStage(stage)) {
+    toast("Missing materials or gold for this stage.");
+    return;
+  }
+  if (stage.goldCost) state.gold -= stage.goldCost;
+  Object.keys(stage.cost || {}).forEach(item => removeItem(item, stage.cost[item]));
+  state.constructedBuildings.push(stage.id);
+  addXp("settlement", stage.xp);
+  toast(`🏗️ Built: ${stage.name}!`);
+  render();
+}
+
+// Sums up every constructed stage's buff of a given type. Percent-type
+// buffs (xxx_pct) are summed additively (e.g. two +10% stages = +20%);
+// flat buffs (e.g. global_defense) are summed as plain numbers.
+function getSettlementBuff(type) {
+  let total = 0;
+  BUILDINGS.forEach(building => {
+    building.stages.forEach(stage => {
+      if (stage.buff && stage.buff.type === type && isStageBuilt(stage.id)) {
+        total += stage.buff.value;
+      }
+    });
+  });
+  return total;
+}
+
 // ---------- Actions (gathering/production/risk) ----------
 function findAction(skillId, actionId) {
   return SKILLS[skillId].actions.find(a => a.id === actionId);
@@ -259,15 +319,39 @@ function resolveActionCycle(skillId, action) {
   // 10 times"), independent of skill levels.
   state.actionCounts[action.id] = (state.actionCounts[action.id] || 0) + 1;
 
-  const success = action.successChance === undefined || Math.random() < action.successChance;
+  // Settlement building buffs that modify an action's success chance
+  // before it's rolled (currently just the Saloon Speakeasy stage).
+  let successChance = action.successChance;
+  if (successChance !== undefined && skillId === "debauchery") {
+    successChance = Math.min(1, successChance + getSettlementBuff("debauchery_success_pct"));
+  }
+  const success = successChance === undefined || Math.random() < successChance;
 
   if (success) {
-    if (action.yields) action.yields.forEach(y => addItem(y.item, y.qty));
+    if (action.yields) {
+      action.yields.forEach(y => {
+        let qty = y.qty;
+        // Armory (Settlement) buff: bonus ammo yield from casting recipes.
+        if (action.ammoRecipe) {
+          qty = Math.round(qty * (1 + getSettlementBuff("ammo_bonus_pct")));
+        }
+        addItem(y.item, qty);
+      });
+    }
     if (action.goldYield) {
-      const g = Math.floor(Math.random() * (action.goldYield.max - action.goldYield.min + 1)) + action.goldYield.min;
+      let g = Math.floor(Math.random() * (action.goldYield.max - action.goldYield.min + 1)) + action.goldYield.min;
+      // Saloon buff: bonus gold from Debauchery games.
+      if (skillId === "debauchery") {
+        g = Math.round(g * (1 + getSettlementBuff("debauchery_gold_pct")));
+      }
       state.gold += g;
     }
-    addXp(skillId, action.xp);
+    let xpGain = action.xp;
+    // Gunsmith Wing (Settlement) buff: bonus XP crafting weapons.
+    if (action.weaponRecipe) {
+      xpGain = Math.round(xpGain * (1 + getSettlementBuff("craft_weapon_xp_pct")));
+    }
+    addXp(skillId, xpGain);
   } else {
     // Failed attempt: materials/gold already spent above are still lost,
     // but xp gain is reduced and no reward — mirrors risk/reward skills.
@@ -309,7 +393,7 @@ function equipItem(slot, itemId) {
 }
 
 function getTotalDefense() {
-  let def = 0;
+  let def = getSettlementBuff("global_defense");
   ["head", "top", "bottom", "boots", "accessory"].forEach(slot => {
     const id = state.equipment[slot];
     if (id && ITEMS[id]) def += ITEMS[id].defense || 0;
@@ -443,7 +527,11 @@ function handleMonsterDeath(monsterDef, weaponClass) {
 
 function handlePlayerDeath() {
   logCombat("☠️ You were knocked out! You wake up back in town, having lost some dollars.");
-  state.gold = Math.floor(state.gold * 0.8);
+  // Forge Vault Room (Settlement) buff: halves the gold-loss penalty.
+  const baseLossPct = 0.2;
+  const reduction = getSettlementBuff("death_gold_loss_reduction_pct");
+  const effectiveLossPct = baseLossPct * (1 - reduction);
+  state.gold = Math.floor(state.gold * (1 - effectiveLossPct));
   state.combat.hp = state.combat.maxHp;
   state.combat.inBattle = false;
   state.combat.monsterId = null;
@@ -462,7 +550,8 @@ function sellItem(itemId, qty) {
   const sellQty = Math.min(qty, have);
   if (sellQty <= 0) return;
   removeItem(itemId, sellQty);
-  state.gold += ITEMS[itemId].sell * sellQty;
+  const bonus = 1 + getSettlementBuff("sell_price_pct");
+  state.gold += Math.round(ITEMS[itemId].sell * sellQty * bonus);
   render();
 }
 
@@ -496,7 +585,7 @@ function simulateOffline() {
   const elapsedSec = Math.max(0, (now - (state.lastSeen || now)) / 1000);
   if (elapsedSec < 5) return;
 
-  const cappedSec = Math.min(elapsedSec, 8 * 3600); // cap at 8 hours
+  const cappedSec = Math.min(elapsedSec, (8 + getSettlementBuff("offline_cap_hours_bonus")) * 3600); // base 8h cap, + Well buff
 
   if (state.currentAction) {
     const action = findAction(state.currentAction.skillId, state.currentAction.actionId);
@@ -565,8 +654,18 @@ function updateGoldDisplay() {
 
 // Updates just the inline progress bar of the currently active action
 // row, if it's visible on the current tab, without a full re-render.
+//
+// IMPORTANT: scoped to the *visible* tab pane only. Switching tabs
+// doesn't clear other panes' innerHTML (only toggles a CSS class), so
+// a stale copy of #inline-action-progress can linger in a hidden pane
+// (e.g. Woodcutting, since it's first in the DOM and the default tab
+// on load). A bare getElementById would grab that stale/hidden one
+// instead of the real, visible element on whatever skill tab you
+// switched to — which looked like the progress bar being "stuck" on
+// Woodcutting. Querying only inside .tab-pane.active fixes that.
 function updateInlineActionProgress() {
-  const bar = document.getElementById("inline-action-progress");
+  const activePane = document.querySelector(".tab-pane.active");
+  const bar = activePane ? activePane.querySelector("#inline-action-progress") : null;
   if (bar && state.currentAction) {
     bar.style.width = `${Math.min(100, state.currentAction.progress * 100)}%`;
   }
@@ -825,6 +924,17 @@ function updateCombatView() {
   }
 }
 
+function sellCustomQty(itemId) {
+  const input = document.getElementById(`sell-qty-${itemId}`);
+  if (!input) return;
+  const qty = parseInt(input.value, 10);
+  if (!qty || qty <= 0) {
+    toast("Enter a quantity to sell.");
+    return;
+  }
+  sellItem(itemId, qty);
+}
+
 function renderBankTab() {
   const rows = Object.keys(state.inventory).sort().map(id => {
     const item = ITEMS[id];
@@ -837,8 +947,14 @@ function renderBankTab() {
         <td>${item.icon} ${item.name}</td>
         <td>${qty}</td>
         <td>$${item.sell}</td>
-        <td>${eatBtn}<button class="btn secondary" onclick="sellItem('${id}',1)">Sell 1</button>
-            <button class="btn secondary" onclick="sellItem('${id}',${qty})">Sell All</button></td>
+        <td class="bank-actions-cell">
+          ${eatBtn}<button class="btn secondary" onclick="sellItem('${id}',1)">Sell 1</button>
+          <button class="btn secondary" onclick="sellItem('${id}',${qty})">Sell All</button>
+          <span class="sell-qty-group">
+            <input type="number" id="sell-qty-${id}" class="sell-qty-input" min="1" max="${qty}" placeholder="#">
+            <button class="btn secondary" onclick="sellCustomQty('${id}')">Sell #</button>
+          </span>
+        </td>
       </tr>
     `;
   }).join("") || `<tr><td colspan="4">Storage is empty. Go gather some resources!</td></tr>`;
@@ -851,6 +967,128 @@ function renderBankTab() {
         <tbody>${rows}</tbody>
       </table>
     </div>
+  `;
+}
+
+function renderSettlementTab() {
+  const skill = SKILLS.settlement;
+  const level = state.skillLevels.settlement;
+  const xp = state.skillXp.settlement;
+  const xpStart = xpForLevel(level);
+  const xpEnd = xpForLevel(level + 1);
+  const pct = level >= 99 ? 100 : Math.floor(((xp - xpStart) / (xpEnd - xpStart)) * 100);
+  const unlocked = skillUnlocked("settlement");
+
+  let lockHtml = "";
+  if (!unlocked) {
+    const reasons = skillLockReasons("settlement");
+    lockHtml = `
+      <div class="lock-banner">
+        <strong>🔒 ${skill.name} is locked.</strong> Reach the following first:
+        ${reasons.map(r => `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
+      </div>
+    `;
+  }
+
+  // Foundation/wall actions, rendered the same way a normal skill tab
+  // renders its action rows (these are the only two buildable solo).
+  const materialRowsHtml = skill.actions.map(action => {
+    const levelLocked = level < action.level;
+    const locked = !unlocked || levelLocked;
+    const isActive = state.currentAction &&
+      state.currentAction.skillId === "settlement" &&
+      state.currentAction.actionId === action.id;
+    const affordable = canAffordAction(action);
+
+    const bits = [];
+    if (action.yields) bits.push(action.yields.map(y => `${ITEMS[y.item].icon} ${ITEMS[y.item].name} x${y.qty}`).join(", "));
+    bits.push(`${action.xp} xp`, `${action.time}s`);
+    if (action.goldCost) bits.push(`Costs $${action.goldCost}`);
+    if (action.consumes) bits.push("Needs: " + action.consumes.map(c => `${ITEMS[c.item].icon} ${ITEMS[c.item].name} x${c.qty}`).join(", "));
+
+    const progressHtml = isActive
+      ? `<div class="action-progress-outer"><div class="action-progress-inner" id="inline-action-progress" style="width:${state.currentAction.progress * 100}%"></div></div>`
+      : "";
+
+    return `
+      <div class="action-row ${locked ? 'locked' : ''}">
+        <div class="action-info">
+          <div class="action-name">${action.name} ${levelLocked ? `(Req. Lv.${action.level})` : ''}</div>
+          <div class="action-sub">${bits.join(" · ")}</div>
+          ${progressHtml}
+        </div>
+        <button class="action-btn ${isActive ? 'active-action' : ''}"
+          ${locked || (!affordable && !isActive) ? 'disabled' : ''}
+          onclick="${isActive ? 'stopAction()' : `startAction('settlement','${action.id}')`}">
+          ${isActive ? 'Stop' : 'Start'}
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  // Stockpile readout so it's obvious how many foundations/walls you
+  // currently have banked, since every building below consumes them.
+  const stockpileHtml = `
+    <div class="combat-stats-summary">
+      <span>${ITEMS.foundation.icon} Foundations: <b>${state.inventory.foundation || 0}</b></span>
+      <span>${ITEMS.wall.icon} Walls: <b>${state.inventory.wall || 0}</b></span>
+    </div>
+  `;
+
+  // Buildings: each is a chain of stages. Show the next buildable
+  // stage's cost/buff; completed stages are listed as done; stages
+  // beyond the next one are shown greyed out as a preview.
+  const buildingsHtml = BUILDINGS.map(building => {
+    const idx = nextStageIndex(building);
+    const completeStages = idx === null ? building.stages : building.stages.slice(0, idx);
+    const nextStage = idx === null ? null : building.stages[idx];
+
+    const doneHtml = completeStages.map(s => `<div class="lock-req met">✓ ${s.name} — ${s.buff.label}</div>`).join("");
+
+    let nextHtml = "";
+    if (nextStage) {
+      const levelLocked = level < nextStage.level;
+      const affordable = canAffordStage(nextStage);
+      const costBits = Object.keys(nextStage.cost || {}).map(item => `${ITEMS[item].icon} ${ITEMS[item].name} x${nextStage.cost[item]}`);
+      if (nextStage.goldCost) costBits.push(`$${nextStage.goldCost}`);
+      nextHtml = `
+        <div class="action-row ${!unlocked || levelLocked ? 'locked' : ''}">
+          <div class="action-info">
+            <div class="action-name">${nextStage.name} ${levelLocked ? `(Req. Settlement Lv.${nextStage.level})` : ''}</div>
+            <div class="action-sub">Needs: ${costBits.join(", ")} · ${nextStage.xp} xp</div>
+            <div class="action-sub" style="color:var(--gold)">Grants: ${nextStage.buff.label}</div>
+          </div>
+          <button class="action-btn" ${!unlocked || levelLocked || !affordable ? 'disabled' : ''}
+            onclick="buildStage('${building.id}')">Build</button>
+        </div>
+      `;
+    } else {
+      nextHtml = `<div class="lock-req met" style="font-weight:bold;">🏁 Fully built!</div>`;
+    }
+
+    return `
+      <div class="panel">
+        <div class="skill-header"><h2>${building.icon} ${building.name}</h2></div>
+        <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">${building.description}</p>
+        ${doneHtml}
+        ${nextHtml}
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("tab-settlement").innerHTML = `
+    <div class="panel">
+      <div class="skill-header">
+        <h2>${skill.icon} ${skill.name}</h2>
+        <div class="level-badge">Lv. ${level}</div>
+      </div>
+      <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
+      <div class="xp-label">${formatXpLabel(level, xp)}</div>
+      ${lockHtml}
+      ${stockpileHtml}
+      <div class="action-list">${materialRowsHtml}</div>
+    </div>
+    ${buildingsHtml}
   `;
 }
 
@@ -913,6 +1151,7 @@ function render() {
   if (activeTab === "combat") renderCombatTab();
   else if (activeTab === "bank") renderBankTab();
   else if (activeTab === "store") renderStoreTab();
+  else if (activeTab === "settlement") renderSettlementTab();
   else if (activeTab === "settings") renderSettingsTab();
   else renderSkillTab(activeTab);
   updateInlineActionProgress();

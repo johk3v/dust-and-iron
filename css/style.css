@@ -210,6 +210,19 @@ table.bank-table th, table.bank-table td {
 }
 table.bank-table th { color: var(--gold); }
 
+.bank-actions-cell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sell-qty-group { display: inline-flex; gap: 4px; align-items: center; }
+.sell-qty-input {
+  width: 56px;
+  font-family: inherit;
+  padding: 6px 4px;
+  background: var(--panel-light);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: center;
+}
+
 .region-select { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .region-btn {
   background: var(--panel-light);
