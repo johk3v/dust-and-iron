@@ -6,11 +6,13 @@
 
 const ITEMS = {
   // ---------------- Raw resources ----------------
-  // Construction materials (Settlement) — the only two Settlement
-  // actions buildable standalone; every building/addition consumes
+  // Construction materials (Settlement) — the only four Settlement
+  // items buildable standalone; every building/addition consumes
   // some number of these plus other materials.
   foundation:   { name: "Foundation",   icon: "🧱", type: "material", sell: 0 },
   wall:         { name: "Wall",         icon: "🧱", type: "material", sell: 0 },
+  roof:         { name: "Roof",         icon: "🏚️", type: "material", sell: 0 },
+  balcony:      { name: "Balcony",      icon: "🪟", type: "material", sell: 0 },
 
   // Prospecting
   copper_ore:   { name: "Copper Ore",   icon: "🟤", type: "ore",  sell: 2 },
@@ -148,14 +150,16 @@ const SKILLS = {
     name: "Woodcutting",
     icon: "🪓",
     actions: [
-      { id: "chop_pine",     name: "Chop Pine",     level: 1,  xp: 4,  time: 2.0, yields: [{ item: "pine_wood", qty: 1 }] },
-      { id: "chop_alder",    name: "Chop Alder",    level: 6,  xp: 7,  time: 2.3, yields: [{ item: "alder_wood", qty: 1 }] },
-      { id: "chop_fir",      name: "Chop Fir",      level: 12, xp: 11, time: 2.6, yields: [{ item: "fir_wood", qty: 1 }] },
-      { id: "chop_maple",    name: "Chop Maple",    level: 18, xp: 16, time: 3.0, yields: [{ item: "maple_wood", qty: 1 }] },
-      { id: "chop_oak",      name: "Chop Oak",      level: 24, xp: 21, time: 3.3, yields: [{ item: "oak_wood", qty: 1 }] },
-      { id: "chop_ironwood", name: "Chop Ironwood", level: 32, xp: 29, time: 3.8, yields: [{ item: "ironwood", qty: 1 }] },
-      { id: "chop_mesquite", name: "Chop Mesquite", level: 40, xp: 38, time: 4.3, yields: [{ item: "mesquite_wood", qty: 1 }] },
-      { id: "chop_redwood",  name: "Chop Redwood",  level: 50, xp: 50, time: 5.0, yields: [{ item: "redwood_wood", qty: 1 }] },
+      // woodcuttingAction: true lets a built Woodcutters Camp (Settlement)
+      // boost yield via getSettlementBuff('woodcutting_yield_bonus_pct').
+      { id: "chop_pine",     name: "Chop Pine",     level: 1,  xp: 4,  time: 2.0, woodcuttingAction: true, yields: [{ item: "pine_wood", qty: 1 }] },
+      { id: "chop_alder",    name: "Chop Alder",    level: 6,  xp: 7,  time: 2.3, woodcuttingAction: true, yields: [{ item: "alder_wood", qty: 1 }] },
+      { id: "chop_fir",      name: "Chop Fir",      level: 12, xp: 11, time: 2.6, woodcuttingAction: true, yields: [{ item: "fir_wood", qty: 1 }] },
+      { id: "chop_maple",    name: "Chop Maple",    level: 18, xp: 16, time: 3.0, woodcuttingAction: true, yields: [{ item: "maple_wood", qty: 1 }] },
+      { id: "chop_oak",      name: "Chop Oak",      level: 24, xp: 21, time: 3.3, woodcuttingAction: true, yields: [{ item: "oak_wood", qty: 1 }] },
+      { id: "chop_ironwood", name: "Chop Ironwood", level: 32, xp: 29, time: 3.8, woodcuttingAction: true, yields: [{ item: "ironwood", qty: 1 }] },
+      { id: "chop_mesquite", name: "Chop Mesquite", level: 40, xp: 38, time: 4.3, woodcuttingAction: true, yields: [{ item: "mesquite_wood", qty: 1 }] },
+      { id: "chop_redwood",  name: "Chop Redwood",  level: 50, xp: 50, time: 5.0, woodcuttingAction: true, yields: [{ item: "redwood_wood", qty: 1 }] },
     ],
   },
 
@@ -163,14 +167,16 @@ const SKILLS = {
     name: "Prospecting",
     icon: "⛏️",
     actions: [
-      { id: "pan_copper",    name: "Pan for Copper Ore",  level: 1,  xp: 4,  time: 2.2, yields: [{ item: "copper_ore", qty: 1 }] },
-      { id: "pan_tin",       name: "Pan for Tin Ore",     level: 1,  xp: 4,  time: 2.2, yields: [{ item: "tin_ore", qty: 1 }] },
-      { id: "dig_iron",      name: "Dig for Iron Ore",    level: 10, xp: 11, time: 3.0, yields: [{ item: "iron_ore", qty: 1 }] },
-      { id: "scavenge_bronze", name: "Scavenge Bronze Scraps", level: 15, xp: 14, time: 3.2, yields: [{ item: "bronze_ore", qty: 1 }] },
-      { id: "quarry_limestone", name: "Quarry Limestone", level: 18, xp: 16, time: 3.3, yields: [{ item: "limestone", qty: 1 }] },
-      { id: "pan_silver",    name: "Pan for Silver Ore",  level: 20, xp: 19, time: 3.6, yields: [{ item: "silver_ore", qty: 1 }] },
-      { id: "pan_gold",      name: "Pan for Gold Ore",    level: 35, xp: 32, time: 4.4, yields: [{ item: "gold_ore", qty: 1 }] },
-      { id: "dig_coal",      name: "Dig for Coal",        level: 5,  xp: 7,  time: 2.6, yields: [{ item: "coal", qty: 1 }] },
+      // miningAction: true lets a built Mining Hut (Settlement)
+      // boost yield via getSettlementBuff('mining_yield_bonus_pct').
+      { id: "pan_copper",    name: "Pan for Copper Ore",  level: 1,  xp: 4,  time: 2.2, miningAction: true, yields: [{ item: "copper_ore", qty: 1 }] },
+      { id: "pan_tin",       name: "Pan for Tin Ore",     level: 1,  xp: 4,  time: 2.2, miningAction: true, yields: [{ item: "tin_ore", qty: 1 }] },
+      { id: "dig_iron",      name: "Dig for Iron Ore",    level: 10, xp: 11, time: 3.0, miningAction: true, yields: [{ item: "iron_ore", qty: 1 }] },
+      { id: "scavenge_bronze", name: "Scavenge Bronze Scraps", level: 15, xp: 14, time: 3.2, miningAction: true, yields: [{ item: "bronze_ore", qty: 1 }] },
+      { id: "quarry_limestone", name: "Quarry Limestone", level: 18, xp: 16, time: 3.3, miningAction: true, yields: [{ item: "limestone", qty: 1 }] },
+      { id: "pan_silver",    name: "Pan for Silver Ore",  level: 20, xp: 19, time: 3.6, miningAction: true, yields: [{ item: "silver_ore", qty: 1 }] },
+      { id: "pan_gold",      name: "Pan for Gold Ore",    level: 35, xp: 32, time: 4.4, miningAction: true, yields: [{ item: "gold_ore", qty: 1 }] },
+      { id: "dig_coal",      name: "Dig for Coal",        level: 5,  xp: 7,  time: 2.6, miningAction: true, yields: [{ item: "coal", qty: 1 }] },
     ],
   },
 
@@ -178,15 +184,17 @@ const SKILLS = {
     name: "Farming",
     icon: "🌾",
     actions: [
-      { id: "tend_chickens", name: "Tend Chickens", level: 1,  xp: 4,  time: 2.0, yields: [{ item: "egg", qty: 1 }] },
-      { id: "milk_cow",      name: "Milk the Cow",  level: 1,  xp: 4,  time: 2.2, yields: [{ item: "milk", qty: 1 }] },
-      { id: "grow_potatoes", name: "Grow Potatoes", level: 4,  xp: 6,  time: 2.4, yields: [{ item: "potato", qty: 1 }] },
-      { id: "grow_carrots",  name: "Grow Carrots",  level: 7,  xp: 8,  time: 2.5, yields: [{ item: "carrot", qty: 1 }] },
-      { id: "grow_wheat",    name: "Grow Wheat",    level: 6,  xp: 8,  time: 2.6, yields: [{ item: "wheat", qty: 1 }] },
-      { id: "grow_tomatoes", name: "Grow Tomatoes", level: 9,  xp: 10, time: 2.7, yields: [{ item: "tomato", qty: 1 }] },
-      { id: "grow_corn",     name: "Grow Corn",     level: 12, xp: 12, time: 2.9, yields: [{ item: "corn", qty: 1 }] },
-      { id: "herd_cattle",   name: "Herd Cattle",   level: 10, xp: 11, time: 3.0, yields: [{ item: "cattle_hide", qty: 1 }] },
-      { id: "grow_cotton",   name: "Grow Cotton",   level: 16, xp: 15, time: 3.4, yields: [{ item: "cotton", qty: 1 }] },
+      // farmAction: true lets a built Farmhouse/Barn (Settlement) boost
+      // xp/yield via getSettlementBuff('farming_xp_pct' / 'farming_yield_bonus_pct').
+      { id: "tend_chickens", name: "Tend Chickens", level: 1,  xp: 4,  time: 2.0, farmAction: true, yields: [{ item: "egg", qty: 1 }] },
+      { id: "milk_cow",      name: "Milk the Cow",  level: 1,  xp: 4,  time: 2.2, farmAction: true, yields: [{ item: "milk", qty: 1 }] },
+      { id: "grow_potatoes", name: "Grow Potatoes", level: 4,  xp: 6,  time: 2.4, farmAction: true, yields: [{ item: "potato", qty: 1 }] },
+      { id: "grow_carrots",  name: "Grow Carrots",  level: 7,  xp: 8,  time: 2.5, farmAction: true, yields: [{ item: "carrot", qty: 1 }] },
+      { id: "grow_wheat",    name: "Grow Wheat",    level: 6,  xp: 8,  time: 2.6, farmAction: true, yields: [{ item: "wheat", qty: 1 }] },
+      { id: "grow_tomatoes", name: "Grow Tomatoes", level: 9,  xp: 10, time: 2.7, farmAction: true, yields: [{ item: "tomato", qty: 1 }] },
+      { id: "grow_corn",     name: "Grow Corn",     level: 12, xp: 12, time: 2.9, farmAction: true, yields: [{ item: "corn", qty: 1 }] },
+      { id: "herd_cattle",   name: "Herd Cattle",   level: 10, xp: 11, time: 3.0, farmAction: true, yields: [{ item: "cattle_hide", qty: 1 }] },
+      { id: "grow_cotton",   name: "Grow Cotton",   level: 16, xp: 15, time: 3.4, farmAction: true, yields: [{ item: "cotton", qty: 1 }] },
     ],
   },
 
@@ -294,12 +302,16 @@ const SKILLS = {
     icon: "🏘️",
     requires: [{ skill: "craftsmanship", level: 10 }, { skill: "farming", level: 5 }],
     actions: [
-      // The only two Settlement actions buildable standalone — every
+      // The only four Settlement actions buildable standalone — every
       // building and addition below consumes some number of these.
-      { id: "lay_foundation", name: "Lay a Foundation", level: 1, xp: 8,  time: 2.4, goldCost: 8,
+      { id: "lay_foundation", name: "Lay a Foundation", level: 1,  xp: 8,  time: 2.4, goldCost: 8,
         yields: [{ item: "foundation", qty: 1 }] },
-      { id: "build_wall",      name: "Build a Wall",     level: 1, xp: 5,  time: 1.8, goldCost: 4,
+      { id: "build_wall",     name: "Build a Wall",     level: 1,  xp: 5,  time: 1.8, goldCost: 4,
         consumes: [{ item: "pine_wood", qty: 1 }], yields: [{ item: "wall", qty: 1 }] },
+      { id: "build_roof",     name: "Build a Roof",     level: 8,  xp: 9,  time: 2.6, goldCost: 10,
+        consumes: [{ item: "oak_wood", qty: 1 }], yields: [{ item: "roof", qty: 1 }] },
+      { id: "build_balcony",  name: "Build a Balcony",  level: 16, xp: 13, time: 3.2, goldCost: 18,
+        consumes: [{ item: "ironwood", qty: 1 }, { item: "iron_bar", qty: 1 }], yields: [{ item: "balcony", qty: 1 }] },
     ],
   },
 
@@ -420,10 +432,15 @@ const STORE_SECTIONS = [
 
 // ------------------------------------------------------------
 // SETTLEMENT: BUILDINGS
-// Every building needs `foundation` + `wall` (produced by the two
-// standalone Settlement actions above) plus whatever other materials
-// are listed, i.e. "everything requires a foundation and a number
-// of walls — those two are the only things buildable by themselves."
+// Three categories (see `category` field on each building):
+//
+//  - "non_construction": standalone buildings. They do NOT need
+//    Foundations/Walls — just gold + a bit of raw material. These
+//    are the explicit exceptions to the construction-material rule.
+//  - "construction": everything else. Every stage needs some number
+//    of Foundation/Wall (and often Roof/Balcony too, for bigger
+//    stages) PLUS whatever other materials are listed. Construction
+//    buildings are listed here in unlock order (ascending level).
 //
 // A building is a `stages` array. Stage 0 is the base structure;
 // later stages are ADDITIONS that require the previous stage already
@@ -435,128 +452,270 @@ const STORE_SECTIONS = [
 // ------------------------------------------------------------
 
 const BUILDINGS = [
-  // ---- Example 1: Saloon chain (exactly as requested) ----
+  // ============================================================
+  // NON-CONSTRUCTION BUILDINGS — buildable standalone, no
+  // Foundation/Wall required.
+  // ============================================================
   {
-    id: "saloon",
-    name: "Saloon",
-    icon: "🍺",
-    description: "The heart of frontier nightlife. Build it, then add onto it over time.",
+    id: "tent",
+    name: "Tent",
+    icon: "⛺",
+    category: "non_construction",
+    description: "A simple canvas tent. Somewhere to rest before the real buildings go up.",
     stages: [
       {
-        id: "saloon_base",
-        name: "Saloon",
-        level: 10,
-        cost: { foundation: 5, wall: 8, oak_wood: 4, iron_bar: 3 },
-        goldCost: 80, xp: 30,
-        buff: { type: "debauchery_gold_pct", value: 0.05, label: "+5% gold from Debauchery" },
-      },
-      {
-        id: "saloon_gambling_room",
-        name: "+ Gambling Room",
-        level: 16,
-        cost: { foundation: 3, wall: 4, silver_bar: 2 },
-        goldCost: 150, xp: 45,
-        buff: { type: "debauchery_gold_pct", value: 0.10, label: "+10% gold from Debauchery" },
-      },
-      {
-        id: "saloon_speakeasy",
-        name: "+ Speakeasy",
-        level: 24,
-        cost: { foundation: 4, wall: 6, steel_bar: 3, cotton: 5 },
-        goldCost: 300, xp: 65,
-        buff: { type: "debauchery_success_pct", value: 0.15, label: "+15% success chance on Debauchery games" },
+        id: "tent_base", name: "Tent", level: 1,
+        cost: { pine_wood: 2 },
+        goldCost: 15, xp: 10,
+        buff: { type: "max_hp_bonus", value: 5, label: "+5 Max HP" },
       },
     ],
   },
-
-  // ---- Example 2: Blacksmith's Forge chain ----
   {
-    id: "forge",
-    name: "Blacksmith's Forge",
-    icon: "⚒️",
-    description: "Where the town's ore becomes bars, bullets, and blades. Expand it as Craftsmanship grows.",
+    id: "trading_post_building",
+    name: "Trading Post",
+    icon: "🤝",
+    category: "non_construction",
+    description: "A trader's stall at the edge of town. Haggle a standing discount on everything the Store sells.",
     stages: [
       {
-        id: "forge_base",
-        name: "Blacksmith's Forge",
-        level: 8,
-        cost: { foundation: 4, wall: 6, iron_bar: 2 },
-        goldCost: 60, xp: 25,
-        buff: { type: "ammo_bonus_pct", value: 0.10, label: "+10% ammo yield from casting" },
-      },
-      {
-        id: "forge_gunsmith_wing",
-        name: "+ Gunsmith Wing",
-        level: 20,
-        cost: { foundation: 3, wall: 5, steel_bar: 3 },
-        goldCost: 180, xp: 55,
-        buff: { type: "craft_weapon_xp_pct", value: 0.15, label: "+15% XP crafting weapons" },
-      },
-      {
-        id: "forge_vault_room",
-        name: "+ Vault Room",
-        level: 28,
-        cost: { foundation: 5, wall: 8, steel_bar: 4, silver_bar: 2 },
-        goldCost: 350, xp: 70,
-        buff: { type: "death_gold_loss_reduction_pct", value: 0.5, label: "Halves gold lost when knocked out" },
+        id: "trading_post_building_base", name: "Trading Post", level: 3,
+        cost: { cotton: 3 },
+        goldCost: 60, xp: 20,
+        buff: { type: "store_discount_pct", value: 0.05, label: "+5% discount on Store purchases" },
       },
     ],
   },
-
-  // ---- Simple one-off buildings (no additions) ----
   {
     id: "well",
     name: "Well",
     icon: "🪣",
+    category: "non_construction",
     description: "Clean water for the whole settlement.",
     stages: [
       {
         id: "well_base", name: "Well", level: 5,
-        cost: { foundation: 2, wall: 2, iron_bar: 2 },
+        cost: { iron_bar: 2 },
         goldCost: 40, xp: 18,
         buff: { type: "offline_cap_hours_bonus", value: 2, label: "+2 hours to offline progress cap" },
       },
     ],
   },
   {
-    id: "bank_vault",
-    name: "Bank Vault",
-    icon: "🏦",
-    description: "A reinforced steel vault for the town's gold reserves.",
+    id: "mining_hut",
+    name: "Mining Hut",
+    icon: "⛏️",
+    category: "non_construction",
+    description: "A sturdy shack full of pickaxes and lanterns, right at the mouth of the mine.",
     stages: [
       {
-        id: "bank_vault_base", name: "Bank Vault", level: 18,
-        cost: { foundation: 4, wall: 6, steel_bar: 4 },
+        id: "mining_hut_base", name: "Mining Hut", level: 8,
+        cost: { limestone: 4 },
+        goldCost: 70, xp: 26,
+        buff: { type: "mining_yield_bonus_pct", value: 0.08, label: "+8% ore/stone yield from Prospecting" },
+      },
+    ],
+  },
+  {
+    id: "woodcutters_camp",
+    name: "Woodcutters Camp",
+    icon: "🪓",
+    category: "non_construction",
+    description: "A camp at the treeline with sharpened axes and a place to stack logs.",
+    stages: [
+      {
+        id: "woodcutters_camp_base", name: "Woodcutters Camp", level: 8,
+        cost: { pine_wood: 6 },
+        goldCost: 70, xp: 26,
+        buff: { type: "woodcutting_yield_bonus_pct", value: 0.08, label: "+8% wood yield from Woodcutting" },
+      },
+    ],
+  },
+
+  // ============================================================
+  // CONSTRUCTION BUILDINGS — require Foundation + Wall (and bigger
+  // stages also need Roof/Balcony). Listed in unlock order.
+  // ============================================================
+  {
+    id: "saloon",
+    name: "Saloon",
+    icon: "🍺",
+    category: "construction",
+    description: "The heart of frontier nightlife. Build it, then add onto it over time.",
+    stages: [
+      {
+        id: "saloon_base", name: "Saloon", level: 10,
+        cost: { foundation: 5, wall: 8, oak_wood: 4, iron_bar: 3 },
+        goldCost: 80, xp: 30,
+        buff: { type: "debauchery_gold_pct", value: 0.05, label: "+5% gold from Debauchery" },
+      },
+      {
+        id: "saloon_gambling_room", name: "+ Gambling Room", level: 16,
+        cost: { foundation: 3, wall: 4, silver_bar: 2 },
         goldCost: 150, xp: 45,
+        buff: { type: "debauchery_gold_pct", value: 0.10, label: "+10% gold from Debauchery" },
+      },
+      {
+        id: "saloon_speakeasy", name: "+ Speakeasy", level: 24,
+        cost: { foundation: 4, wall: 6, steel_bar: 3, cotton: 5 },
+        goldCost: 300, xp: 65,
+        buff: { type: "debauchery_success_pct", value: 0.15, label: "+15% success chance on Debauchery games" },
+      },
+    ],
+  },
+  {
+    id: "farmhouse",
+    name: "Farmhouse",
+    icon: "🏡",
+    category: "construction",
+    description: "A proper farmhouse to run the fields from. Teaches better technique, not just more muscle.",
+    stages: [
+      {
+        id: "farmhouse_base", name: "Farmhouse", level: 14,
+        cost: { foundation: 4, wall: 6, wheat: 5, pine_wood: 3 },
+        goldCost: 100, xp: 35,
+        buff: { type: "farming_xp_pct", value: 0.10, label: "+10% XP from Farming actions" },
+      },
+      {
+        id: "farmhouse_henhouse_wing", name: "+ Henhouse Wing", level: 20,
+        cost: { foundation: 2, wall: 3, roof: 2, egg: 10 },
+        goldCost: 160, xp: 50,
+        buff: { type: "farming_xp_pct", value: 0.15, label: "+15% XP from Farming actions" },
+      },
+    ],
+  },
+  {
+    id: "barn",
+    name: "Barn",
+    icon: "🏚️",
+    category: "construction",
+    description: "Storage and stock capacity for the farm — more produce per harvest.",
+    stages: [
+      {
+        id: "barn_base", name: "Barn", level: 18,
+        cost: { foundation: 5, wall: 8, roof: 3, oak_wood: 4 },
+        goldCost: 180, xp: 55,
+        buff: { type: "farming_yield_bonus_pct", value: 0.08, label: "+8% yield from Farming actions" },
+      },
+      {
+        id: "barn_silo", name: "+ Silo", level: 24,
+        cost: { foundation: 3, wall: 4, roof: 2, steel_bar: 2 },
+        goldCost: 260, xp: 70,
+        buff: { type: "farming_yield_bonus_pct", value: 0.12, label: "+12% yield from Farming actions" },
+      },
+    ],
+  },
+  {
+    id: "market",
+    name: "Market",
+    icon: "🏪",
+    category: "construction",
+    description: "A covered market square. Better prices buying and selling.",
+    stages: [
+      {
+        id: "market_base", name: "Market", level: 22,
+        cost: { foundation: 5, wall: 7, roof: 3, cotton: 6 },
+        goldCost: 220, xp: 60,
         buff: { type: "sell_price_pct", value: 0.05, label: "+5% gold from selling items" },
+      },
+      {
+        id: "market_trade_stalls", name: "+ Trade Stalls", level: 28,
+        cost: { foundation: 3, wall: 5, balcony: 2, silver_bar: 2 },
+        goldCost: 320, xp: 80,
+        buff: { type: "store_discount_pct", value: 0.10, label: "+10% discount on Store purchases" },
+      },
+    ],
+  },
+  {
+    id: "forge",
+    name: "Blacksmith's Forge",
+    icon: "⚒️",
+    category: "construction",
+    description: "Where the town's ore becomes bars, bullets, and blades. Expand it as Craftsmanship grows.",
+    stages: [
+      {
+        id: "forge_base", name: "Blacksmith's Forge", level: 26,
+        cost: { foundation: 4, wall: 6, roof: 2, iron_bar: 2 },
+        goldCost: 280, xp: 70,
+        buff: { type: "ammo_bonus_pct", value: 0.10, label: "+10% ammo yield from casting" },
+      },
+      {
+        id: "forge_gunsmith_wing", name: "+ Gunsmith Wing", level: 32,
+        cost: { foundation: 3, wall: 5, balcony: 2, steel_bar: 3 },
+        goldCost: 400, xp: 95,
+        buff: { type: "craft_weapon_xp_pct", value: 0.15, label: "+15% XP crafting weapons" },
+      },
+      {
+        id: "forge_vault_room", name: "+ Vault Room", level: 40,
+        cost: { foundation: 5, wall: 8, balcony: 3, steel_bar: 4, silver_bar: 2 },
+        goldCost: 600, xp: 130,
+        buff: { type: "death_gold_loss_reduction_pct", value: 0.5, label: "Halves gold lost when knocked out" },
       },
     ],
   },
   {
     id: "sheriff_office",
-    name: "Sheriff's Office",
+    name: "Sheriff",
     icon: "🌟",
+    category: "construction",
     description: "Law and order, frontier-style. Appointing a sheriff grants the whole town extra protection.",
     stages: [
       {
-        id: "sheriff_office_base", name: "Sheriff's Office", level: 25,
-        cost: { foundation: 3, wall: 4, silver_bar: 3, cotton: 5 },
-        goldCost: 250, xp: 60,
+        id: "sheriff_office_base", name: "Sheriff", level: 30,
+        cost: { foundation: 3, wall: 4, roof: 1, silver_bar: 3, cotton: 5 },
+        goldCost: 350, xp: 90,
         buff: { type: "global_defense", value: 2, label: "+2 Defense in all combat" },
       },
     ],
   },
   {
+    id: "bank_vault",
+    name: "Bank",
+    icon: "🏦",
+    category: "construction",
+    description: "A reinforced steel vault for the town's gold reserves.",
+    stages: [
+      {
+        id: "bank_vault_base", name: "Bank", level: 34,
+        cost: { foundation: 4, wall: 6, roof: 2, balcony: 1, steel_bar: 4 },
+        goldCost: 450, xp: 110,
+        buff: { type: "sell_price_pct", value: 0.05, label: "+5% gold from selling items" },
+      },
+    ],
+  },
+  {
+    id: "doctor",
+    name: "Doctor",
+    icon: "⚕️",
+    category: "construction",
+    description: "A clinic to patch up gunshot wounds and snake bites. Expand it into proper surgery later.",
+    stages: [
+      {
+        id: "doctor_base", name: "Doctor", level: 38,
+        cost: { foundation: 4, wall: 6, roof: 3, cattle_hide: 4, cotton: 4 },
+        goldCost: 500, xp: 120,
+        buff: { type: "food_heal_bonus_pct", value: 0.15, label: "+15% HP restored from food" },
+      },
+      {
+        id: "doctor_surgery", name: "+ Surgery", level: 44,
+        cost: { foundation: 3, wall: 5, balcony: 2, steel_bar: 3, silver_bar: 2 },
+        goldCost: 700, xp: 150,
+        buff: { type: "max_hp_bonus", value: 10, label: "+10 Max HP" },
+      },
+    ],
+  },
+  {
     id: "railroad_depot",
-    name: "Railroad Depot",
+    name: "Train Station",
     icon: "🚂",
+    category: "construction",
     description: "Charter a railroad line and connect the settlement to the wider frontier economy.",
     stages: [
       {
-        id: "railroad_depot_base", name: "Railroad Depot", level: 35,
-        cost: { foundation: 6, wall: 10, steel_bar: 8, ironwood: 4 },
-        goldCost: 500, xp: 90,
-        buff: { type: "sell_price_pct", value: 0.10, label: "+10% gold from selling items" },
+        id: "railroad_depot_base", name: "Train Station", level: 42,
+        cost: { foundation: 6, wall: 10, roof: 4, balcony: 2, steel_bar: 8, ironwood: 4 },
+        goldCost: 900, xp: 200,
+        buff: { type: "offline_cap_hours_bonus", value: 3, label: "+3 hours to offline progress cap" },
       },
     ],
   },

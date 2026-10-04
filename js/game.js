@@ -131,7 +131,7 @@ function getHighestCombatLevel() {
 
 function recalcMaxHp() {
   const lvl = getHighestCombatLevel();
-  const newMax = 50 + (lvl - 1) * 6;
+  const newMax = 50 + (lvl - 1) * 6 + getSettlementBuff("max_hp_bonus");
   const wasFull = state.combat.hp >= state.combat.maxHp;
   state.combat.maxHp = newMax;
   if (wasFull) state.combat.hp = newMax;
@@ -172,7 +172,23 @@ function hasItems(consumes) {
   return consumes.every(c => (state.inventory[c.item] || 0) >= c.qty);
 }
 
+// Applies a percentage yield bonus to a base quantity using floor +
+// probabilistic remainder, so small bonuses (e.g. +8%) still do
+// something on actions that only yield qty:1 (where Math.round would
+// always round back down to the same number).
+function applyYieldBonus(baseQty, bonusPct) {
+  if (!bonusPct) return baseQty;
+  const boosted = baseQty * (1 + bonusPct);
+  const whole = Math.floor(boosted);
+  const remainder = boosted - whole;
+  return whole + (Math.random() < remainder ? 1 : 0);
+}
+
 // ---------- Store (economy) ----------
+function storePrice(entry) {
+  return Math.max(1, Math.round(entry.price * (1 - getSettlementBuff("store_discount_pct"))));
+}
+
 function storeSectionUnlocked(section) {
   const u = section.unlock;
   if (!u) return true;
@@ -193,11 +209,14 @@ function buyStoreItem(sectionId, itemIndex) {
   if (!section || !storeSectionUnlocked(section)) return;
   const entry = section.items[itemIndex];
   if (!entry) return;
-  if (state.gold < entry.price) {
+  // Trading Post / Market Trade Stalls (Settlement) buff: standing
+  // discount on everything the Store sells.
+  const price = storePrice(entry);
+  if (state.gold < price) {
     toast("Not enough gold!");
     return;
   }
-  state.gold -= entry.price;
+  state.gold -= price;
   addItem(entry.item, entry.qty);
   toast(`Bought ${ITEMS[entry.item].icon} ${ITEMS[entry.item].name} x${entry.qty}.`);
   render();
@@ -242,6 +261,7 @@ function buildStage(buildingId) {
   Object.keys(stage.cost || {}).forEach(item => removeItem(item, stage.cost[item]));
   state.constructedBuildings.push(stage.id);
   addXp("settlement", stage.xp);
+  recalcMaxHp(); // some buffs (e.g. max_hp_bonus) take effect immediately
   toast(`🏗️ Built: ${stage.name}!`);
   render();
 }
@@ -333,9 +353,24 @@ function resolveActionCycle(skillId, action) {
         let qty = y.qty;
         // Armory (Settlement) buff: bonus ammo yield from casting recipes.
         if (action.ammoRecipe) {
-          qty = Math.round(qty * (1 + getSettlementBuff("ammo_bonus_pct")));
+          qty = applyYieldBonus(qty, getSettlementBuff("ammo_bonus_pct"));
         }
-        addItem(y.item, qty);
+        // Mining Hut / Woodcutters Camp / Farmhouse+Barn (Settlement)
+        // buffs: bonus raw-resource yield from gathering actions.
+        // Uses applyYieldBonus (floor + probabilistic remainder) rather
+        // than a plain round(), since most gather actions only yield
+        // qty:1 and round(1 * 1.08) = 1 would make a small % buff do
+        // nothing — the fractional part is instead a chance of +1.
+        if (action.miningAction) {
+          qty = applyYieldBonus(qty, getSettlementBuff("mining_yield_bonus_pct"));
+        }
+        if (action.woodcuttingAction) {
+          qty = applyYieldBonus(qty, getSettlementBuff("woodcutting_yield_bonus_pct"));
+        }
+        if (action.farmAction) {
+          qty = applyYieldBonus(qty, getSettlementBuff("farming_yield_bonus_pct"));
+        }
+        addItem(y.item, Math.max(1, qty));
       });
     }
     if (action.goldYield) {
@@ -350,6 +385,10 @@ function resolveActionCycle(skillId, action) {
     // Gunsmith Wing (Settlement) buff: bonus XP crafting weapons.
     if (action.weaponRecipe) {
       xpGain = Math.round(xpGain * (1 + getSettlementBuff("craft_weapon_xp_pct")));
+    }
+    // Farmhouse (Settlement) buff: bonus XP from Farming actions.
+    if (action.farmAction) {
+      xpGain = Math.round(xpGain * (1 + getSettlementBuff("farming_xp_pct")));
     }
     addXp(skillId, xpGain);
   } else {
@@ -563,6 +602,10 @@ function sellAll() {
 }
 
 // ---------- Food / healing ----------
+function effectiveHeal(item) {
+  return Math.round(item.heal * (1 + getSettlementBuff("food_heal_bonus_pct")));
+}
+
 function eatItem(itemId) {
   const item = ITEMS[itemId];
   if (!item || item.type !== "food") return;
@@ -572,7 +615,9 @@ function eatItem(itemId) {
     return;
   }
   removeItem(itemId, 1);
-  const healed = Math.min(item.heal, state.combat.maxHp - state.combat.hp);
+  // Doctor (Settlement) buff: bonus HP restored from food.
+  const healAmount = effectiveHeal(item);
+  const healed = Math.min(healAmount, state.combat.maxHp - state.combat.hp);
   state.combat.hp += healed;
   toast(`🍖 Ate ${item.name}, healed ${healed} HP.`);
   if (state.combat.inBattle) logCombat(`You eat ${item.name} and heal ${healed} HP.`);
@@ -832,7 +877,7 @@ function renderCombatTab() {
   const foodBarHtml = foodEntries.length ? `
     <div class="combat-stats-summary" id="food-bar">
       <span>🍖 Food:</span>
-      ${foodEntries.map(id => `<button class="btn secondary" onclick="eatItem('${id}')">${ITEMS[id].icon} ${ITEMS[id].name} (${state.inventory[id]}) +${ITEMS[id].heal} HP</button>`).join("")}
+      ${foodEntries.map(id => `<button class="btn secondary" onclick="eatItem('${id}')">${ITEMS[id].icon} ${ITEMS[id].name} (${state.inventory[id]}) +${effectiveHeal(ITEMS[id])} HP</button>`).join("")}
     </div>
   ` : "";
 
@@ -940,7 +985,7 @@ function renderBankTab() {
     const item = ITEMS[id];
     const qty = state.inventory[id];
     const eatBtn = item.type === "food"
-      ? `<button class="btn" onclick="eatItem('${id}')" title="Heal ${item.heal} HP">🍖 Eat (+${item.heal} HP)</button>`
+      ? `<button class="btn" onclick="eatItem('${id}')" title="Heal ${effectiveHeal(item)} HP">🍖 Eat (+${effectiveHeal(item)} HP)</button>`
       : "";
     return `
       <tr>
@@ -990,9 +1035,10 @@ function renderSettlementTab() {
     `;
   }
 
-  // Foundation/wall actions, rendered the same way a normal skill tab
-  // renders its action rows (these are the only two buildable solo).
-  const materialRowsHtml = skill.actions.map(action => {
+  // Foundation/Wall/Roof/Balcony actions ("Construction Materials"),
+  // rendered the same way a normal skill tab renders its action rows
+  // (these are the only four buildable solo) — sorted by level.
+  const materialRowsHtml = skill.actions.slice().sort((a, b) => a.level - b.level).map(action => {
     const levelLocked = level < action.level;
     const locked = !unlocked || levelLocked;
     const isActive = state.currentAction &&
@@ -1026,55 +1072,67 @@ function renderSettlementTab() {
     `;
   }).join("");
 
-  // Stockpile readout so it's obvious how many foundations/walls you
-  // currently have banked, since every building below consumes them.
+  // Stockpile readout so it's obvious how many of each material you
+  // currently have banked, since every construction building below
+  // consumes them (non-construction buildings don't need any of this).
   const stockpileHtml = `
     <div class="combat-stats-summary">
       <span>${ITEMS.foundation.icon} Foundations: <b>${state.inventory.foundation || 0}</b></span>
       <span>${ITEMS.wall.icon} Walls: <b>${state.inventory.wall || 0}</b></span>
+      <span>${ITEMS.roof.icon} Roofs: <b>${state.inventory.roof || 0}</b></span>
+      <span>${ITEMS.balcony.icon} Balconies: <b>${state.inventory.balcony || 0}</b></span>
     </div>
   `;
 
-  // Buildings: each is a chain of stages. Show the next buildable
-  // stage's cost/buff; completed stages are listed as done; stages
-  // beyond the next one are shown greyed out as a preview.
-  const buildingsHtml = BUILDINGS.map(building => {
-    const idx = nextStageIndex(building);
-    const completeStages = idx === null ? building.stages : building.stages.slice(0, idx);
-    const nextStage = idx === null ? null : building.stages[idx];
+  // Renders one category's buildings (sorted by their first/base
+  // stage's level requirement, i.e. "in order of unlocks") as a
+  // sequence of building panels.
+  function renderBuildingGroup(category) {
+    return BUILDINGS
+      .filter(b => b.category === category)
+      .slice()
+      .sort((a, b) => a.stages[0].level - b.stages[0].level)
+      .map(building => {
+        const idx = nextStageIndex(building);
+        const completeStages = idx === null ? building.stages : building.stages.slice(0, idx);
+        const nextStage = idx === null ? null : building.stages[idx];
 
-    const doneHtml = completeStages.map(s => `<div class="lock-req met">✓ ${s.name} — ${s.buff.label}</div>`).join("");
+        const doneHtml = completeStages.map(s => `<div class="lock-req met">✓ ${s.name} — ${s.buff.label}</div>`).join("");
 
-    let nextHtml = "";
-    if (nextStage) {
-      const levelLocked = level < nextStage.level;
-      const affordable = canAffordStage(nextStage);
-      const costBits = Object.keys(nextStage.cost || {}).map(item => `${ITEMS[item].icon} ${ITEMS[item].name} x${nextStage.cost[item]}`);
-      if (nextStage.goldCost) costBits.push(`$${nextStage.goldCost}`);
-      nextHtml = `
-        <div class="action-row ${!unlocked || levelLocked ? 'locked' : ''}">
-          <div class="action-info">
-            <div class="action-name">${nextStage.name} ${levelLocked ? `(Req. Settlement Lv.${nextStage.level})` : ''}</div>
-            <div class="action-sub">Needs: ${costBits.join(", ")} · ${nextStage.xp} xp</div>
-            <div class="action-sub" style="color:var(--gold)">Grants: ${nextStage.buff.label}</div>
+        let nextHtml = "";
+        if (nextStage) {
+          const levelLocked = level < nextStage.level;
+          const affordable = canAffordStage(nextStage);
+          const costBits = Object.keys(nextStage.cost || {}).map(item => `${ITEMS[item].icon} ${ITEMS[item].name} x${nextStage.cost[item]}`);
+          if (nextStage.goldCost) costBits.push(`$${nextStage.goldCost}`);
+          nextHtml = `
+            <div class="action-row ${!unlocked || levelLocked ? 'locked' : ''}">
+              <div class="action-info">
+                <div class="action-name">${nextStage.name} ${levelLocked ? `(Req. Settlement Lv.${nextStage.level})` : ''}</div>
+                <div class="action-sub">Needs: ${costBits.join(", ")} · ${nextStage.xp} xp</div>
+                <div class="action-sub" style="color:var(--gold)">Grants: ${nextStage.buff.label}</div>
+              </div>
+              <button class="action-btn" ${!unlocked || levelLocked || !affordable ? 'disabled' : ''}
+                onclick="buildStage('${building.id}')">Build</button>
+            </div>
+          `;
+        } else {
+          nextHtml = `<div class="lock-req met" style="font-weight:bold;">🏁 Fully built!</div>`;
+        }
+
+        return `
+          <div class="panel">
+            <div class="skill-header"><h2>${building.icon} ${building.name}</h2></div>
+            <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">${building.description}</p>
+            ${doneHtml}
+            ${nextHtml}
           </div>
-          <button class="action-btn" ${!unlocked || levelLocked || !affordable ? 'disabled' : ''}
-            onclick="buildStage('${building.id}')">Build</button>
-        </div>
-      `;
-    } else {
-      nextHtml = `<div class="lock-req met" style="font-weight:bold;">🏁 Fully built!</div>`;
-    }
+        `;
+      }).join("");
+  }
 
-    return `
-      <div class="panel">
-        <div class="skill-header"><h2>${building.icon} ${building.name}</h2></div>
-        <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">${building.description}</p>
-        ${doneHtml}
-        ${nextHtml}
-      </div>
-    `;
-  }).join("");
+  const nonConstructionHtml = renderBuildingGroup("non_construction");
+  const constructionHtml = renderBuildingGroup("construction");
 
   document.getElementById("tab-settlement").innerHTML = `
     <div class="panel">
@@ -1085,10 +1143,22 @@ function renderSettlementTab() {
       <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
       <div class="xp-label">${formatXpLabel(level, xp)}</div>
       ${lockHtml}
+    </div>
+    <div class="panel">
+      <div class="skill-header"><h2>🏠 Non-Construction Buildings</h2></div>
+      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Built standalone — no Foundation or Wall required.</p>
+    </div>
+    ${nonConstructionHtml}
+    <div class="panel">
+      <div class="skill-header"><h2>🧱 Construction Materials</h2></div>
+      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Foundation and Wall are the only two base materials buildable by themselves; Roof and Balcony are needed for bigger additions. Every Construction Building below consumes some of these.</p>
       ${stockpileHtml}
       <div class="action-list">${materialRowsHtml}</div>
     </div>
-    ${buildingsHtml}
+    <div class="panel">
+      <div class="skill-header"><h2>🏗️ Construction Buildings <span class="action-sub">(in order of unlocks)</span></h2></div>
+    </div>
+    ${constructionHtml}
   `;
 }
 
@@ -1109,12 +1179,14 @@ function renderStoreTab() {
 
     const rowsHtml = section.items.map((entry, idx) => {
       const item = ITEMS[entry.item];
-      const affordable = state.gold >= entry.price;
+      const price = storePrice(entry);
+      const discounted = price < entry.price;
+      const affordable = state.gold >= price;
       return `
         <div class="action-row ${!unlocked ? 'locked' : ''}">
           <div class="action-info">
             <div class="action-name">${item.icon} ${item.name} x${entry.qty}</div>
-            <div class="action-sub">$${entry.price}</div>
+            <div class="action-sub">${discounted ? `<s>$${entry.price}</s> ` : ''}$${price}</div>
           </div>
           <button class="action-btn" ${!unlocked || !affordable ? 'disabled' : ''}
             onclick="buyStoreItem('${section.id}', ${idx})">Buy</button>
