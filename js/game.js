@@ -307,6 +307,14 @@ function startAction(skillId, actionId) {
     toast(action.goldCost ? "Not enough gold!" : "Not enough materials!");
     return;
   }
+  // Combat and gathering/crafting actions are mutually exclusive — you
+  // can't train Woodcutting while trading punches with a coyote. Starting
+  // a skill action auto-flees any battle in progress, same as switching
+  // between two skill actions auto-stops the first one.
+  if (state.combat.inBattle) {
+    fleeBattle();
+    toast("Left combat to start " + action.name + ".");
+  }
   state.currentAction = {
     skillId, actionId,
     progress: 0,
@@ -472,6 +480,14 @@ function startBattle(monsterDefId) {
   const region = getRegion();
   const monsterDef = region.monsters.find(m => m.id === monsterDefId);
   if (!monsterDef) return;
+  // Mutually exclusive with skill actions (see startAction's comment):
+  // engaging combat stops whatever you were gathering/crafting, the
+  // same way starting a new skill action stops the previous one.
+  if (state.currentAction) {
+    const prevSkill = SKILLS[state.currentAction.skillId];
+    stopAction();
+    toast(`Stopped ${prevSkill ? prevSkill.name : 'activity'} to engage ${monsterDef.name}.`);
+  }
   state.combat.monsterId = monsterDefId;
   state.combat.monsterHp = monsterDef.hp;
   state.combat.inBattle = true;

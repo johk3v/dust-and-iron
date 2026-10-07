@@ -21,7 +21,8 @@ Progress autosaves to `localStorage` every 5 seconds, and the game simulates off
 - **Woodcutting** — chop Pine, Alder, Fir, Maple, Oak, Ironwood, Mesquite, and Redwood (8 tiers)
 - **Prospecting** — pan/dig/quarry Copper, Tin, Coal, Iron, Bronze, Limestone, Silver, and Gold
 - **Farming** — tend chickens, milk cows, grow Potatoes/Carrots/Wheat/Tomatoes/Corn/Cotton, herd cattle
-- **Fishing** — catch trout, catfish, bass, salmon, sturgeon, and a rare Legendary Catfish; catches double as food
+- **Fishing** — 16 species from Perch and Bluegill up through Sturgeon, Paddlefish, Steelhead, and two rare risk/reward catches (Legendary Catfish, Golden Trout); catches double as food, or feed into Cooking
+- **Cooking** — turn Farming produce + Fishing catches into cooked meals that heal (and sell) for noticeably more than the raw ingredients. *Soft-locked* until Farming 3 + Fishing 3.
 - **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail); scouting trails also feeds the Store's Trading Post unlock
 - **Craftsmanship** — smelt bars and craft weapons, ammo, and armor. *Soft-locked* until Prospecting 5 + Woodcutting 5.
 - **Settlement** — a construction system of its own (see below). *Soft-locked* until Craftsmanship 10 + Farming 5.
@@ -35,7 +36,7 @@ Three independently-trained combat skills, each leveled by equipping the matchin
 - **Gunslinging** — revolvers (fast, pistol ammo)
 - **Marksmanship** — rifles (slow, high damage, rifle rounds)
 
-Turn-based (tick-based) fights across 4 regions (Dusty Gulch → Whispering Pines → Red Rock Canyon → Boothill Cemetery) with loot drops, gold, and combat XP.
+Turn-based (tick-based) fights across 4 regions (Dusty Gulch → Whispering Pines → Red Rock Canyon → Boothill Cemetery) with loot drops, gold, and combat XP. Combat and skill actions (gathering/crafting) are mutually exclusive — engaging a monster auto-stops whatever skill you were training, and starting a skill action auto-flees any fight in progress, just like switching between two skill actions stops the first.
 
 ### Equipment system
 Six gear slots: **Weapon**, **Head**, **Top**, **Bottom**, **Boots**, and an **Extra** customization slot for accessories (badges, charms, trinkets) that grant bonus damage % and/or defense. Armor reduces incoming damage; accessories can boost both offense and defense.

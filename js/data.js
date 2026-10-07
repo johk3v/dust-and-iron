@@ -56,15 +56,45 @@ const ITEMS = {
 
   // ---------------- Fishing (raw catches, double as food) ----------------
   // type: "food" items can be eaten (from Storage or mid-combat) to
-  // restore `heal` HP, consuming one unit.
+  // restore `heal` HP, consuming one unit. Also usable as Cooking
+  // ingredients (see cooking skill / cooked meal items below).
+  raw_perch:          { name: "Raw Perch",          icon: "🐟", type: "food", heal: 5,  sell: 2 },
+  raw_bluegill:       { name: "Raw Bluegill",       icon: "🐟", type: "food", heal: 6,  sell: 2 },
   raw_trout:          { name: "Raw Trout",          icon: "🐟", type: "food", heal: 8,  sell: 3 },
+  raw_crappie:        { name: "Raw Crappie",        icon: "🐠", type: "food", heal: 11, sell: 5 },
   raw_catfish:        { name: "Raw Catfish",        icon: "🐠", type: "food", heal: 14, sell: 6 },
+  raw_pike:           { name: "Raw Pike",           icon: "🐠", type: "food", heal: 17, sell: 8 },
   raw_bass:           { name: "Raw Bass",           icon: "🐡", type: "food", heal: 20, sell: 10 },
+  raw_walleye:        { name: "Raw Walleye",        icon: "🐡", type: "food", heal: 23, sell: 13 },
   raw_salmon:         { name: "Raw Salmon",         icon: "🍣", type: "food", heal: 28, sell: 16 },
+  raw_muskie:         { name: "Raw Muskie",         icon: "🍣", type: "food", heal: 32, sell: 20 },
   raw_sturgeon:       { name: "Raw Sturgeon",       icon: "🐋", type: "food", heal: 38, sell: 26 },
+  raw_paddlefish:     { name: "Raw Paddlefish",     icon: "🐋", type: "food", heal: 43, sell: 32 },
+  raw_gar:            { name: "Raw Gar",             icon: "🐊", type: "food", heal: 48, sell: 38 },
+  raw_steelhead:      { name: "Raw Steelhead",      icon: "🐬", type: "food", heal: 54, sell: 46 },
+  raw_golden_trout:   { name: "Raw Golden Trout",   icon: "✨", type: "food", heal: 60, sell: 70, successFish: true },
   legendary_catfish:  { name: "Legendary Catfish",  icon: "🏆", type: "food", heal: 55, sell: 60 },
 
   // Farming produce doubles as basic trail food
+
+  // ---------------- Cooking: cooked meals ----------------
+  // Combine Farming produce + Fishing catches into meals that heal
+  // (and sell) for noticeably more than eating the raw ingredients
+  // separately. See the `cooking` skill below for recipes.
+  campfire_perch:       { name: "Campfire Perch",         icon: "🔥", type: "food", heal: 10, sell: 5 },
+  egg_battered_bluegill:{ name: "Egg-Battered Bluegill",  icon: "🍳", type: "food", heal: 15, sell: 9 },
+  trout_with_wild_carrots: { name: "Trout with Wild Carrots", icon: "🥘", type: "food", heal: 22, sell: 14 },
+  fried_catfish_potatoes:  { name: "Fried Catfish & Potatoes", icon: "🍽️", type: "food", heal: 28, sell: 18 },
+  cornbread_crusted_pike:  { name: "Cornbread-Crusted Pike",   icon: "🌽", type: "food", heal: 34, sell: 24 },
+  bass_corn_skillet:       { name: "Bass & Corn Skillet",      icon: "🍳", type: "food", heal: 40, sell: 30 },
+  buttered_walleye:        { name: "Buttered Walleye",         icon: "🧈", type: "food", heal: 46, sell: 36 },
+  salmon_tomato_stew:      { name: "Salmon Tomato Stew",       icon: "🍲", type: "food", heal: 55, sell: 44 },
+  muskie_wheat_biscuits:   { name: "Muskie & Wheat Biscuits",  icon: "🥖", type: "food", heal: 62, sell: 52 },
+  hearty_fish_stew:        { name: "Hearty Fish Stew",         icon: "🍲", type: "food", heal: 70, sell: 60 },
+  sturgeon_steak_dinner:   { name: "Sturgeon Steak Dinner",    icon: "🍽️", type: "food", heal: 78, sell: 70 },
+  paddlefish_chowder:      { name: "Paddlefish Chowder",       icon: "🥣", type: "food", heal: 86, sell: 82 },
+  steelhead_supreme:       { name: "Steelhead Supreme",        icon: "🍽️", type: "food", heal: 95, sell: 95 },
+  golden_trout_feast:      { name: "Golden Trout Feast",       icon: "👑", type: "food", heal: 120, sell: 150 },
 
   // ---------------- Store-exclusive basic goods ----------------
   trail_rations:    { name: "Trail Rations",    icon: "🥫", type: "food", heal: 12, sell: 5 },
@@ -202,13 +232,63 @@ const SKILLS = {
     name: "Fishing",
     icon: "🎣",
     actions: [
-      { id: "fish_trout",    name: "Fish for Trout",       level: 1,  xp: 4,  time: 2.2, yields: [{ item: "raw_trout", qty: 1 }] },
-      { id: "fish_catfish",  name: "Fish for Catfish",     level: 8,  xp: 9,  time: 2.8, yields: [{ item: "raw_catfish", qty: 1 }] },
-      { id: "fish_bass",     name: "Fish for Bass",        level: 15, xp: 14, time: 3.2, yields: [{ item: "raw_bass", qty: 1 }] },
-      { id: "fish_salmon",   name: "Fish for Salmon",      level: 24, xp: 21, time: 3.8, yields: [{ item: "raw_salmon", qty: 1 }] },
-      { id: "fish_sturgeon", name: "Fish for Sturgeon",    level: 33, xp: 30, time: 4.6, yields: [{ item: "raw_sturgeon", qty: 1 }] },
+      // fishAction: true lets a built fishing-related Settlement buff
+      // (future-proofing, none yet) and Cooking recognize these as raw
+      // ingredients.
+      { id: "fish_perch",    name: "Fish for Perch",      level: 1,  xp: 3,  time: 1.8, fishAction: true, yields: [{ item: "raw_perch", qty: 1 }] },
+      { id: "fish_bluegill", name: "Fish for Bluegill",   level: 4,  xp: 5,  time: 2.0, fishAction: true, yields: [{ item: "raw_bluegill", qty: 1 }] },
+      { id: "fish_trout",    name: "Fish for Trout",       level: 1,  xp: 4,  time: 2.2, fishAction: true, yields: [{ item: "raw_trout", qty: 1 }] },
+      { id: "fish_crappie",  name: "Fish for Crappie",    level: 6,  xp: 7,  time: 2.5, fishAction: true, yields: [{ item: "raw_crappie", qty: 1 }] },
+      { id: "fish_catfish",  name: "Fish for Catfish",     level: 8,  xp: 9,  time: 2.8, fishAction: true, yields: [{ item: "raw_catfish", qty: 1 }] },
+      { id: "fish_pike",     name: "Fish for Pike",       level: 11, xp: 11, time: 3.0, fishAction: true, yields: [{ item: "raw_pike", qty: 1 }] },
+      { id: "fish_bass",     name: "Fish for Bass",        level: 15, xp: 14, time: 3.2, fishAction: true, yields: [{ item: "raw_bass", qty: 1 }] },
+      { id: "fish_walleye",  name: "Fish for Walleye",    level: 19, xp: 17, time: 3.5, fishAction: true, yields: [{ item: "raw_walleye", qty: 1 }] },
+      { id: "fish_salmon",   name: "Fish for Salmon",      level: 24, xp: 21, time: 3.8, fishAction: true, yields: [{ item: "raw_salmon", qty: 1 }] },
+      { id: "fish_muskie",   name: "Fish for Muskie",     level: 28, xp: 25, time: 4.2, fishAction: true, yields: [{ item: "raw_muskie", qty: 1 }] },
+      { id: "fish_sturgeon", name: "Fish for Sturgeon",    level: 33, xp: 30, time: 4.6, fishAction: true, yields: [{ item: "raw_sturgeon", qty: 1 }] },
+      { id: "fish_paddlefish", name: "Fish for Paddlefish", level: 37, xp: 34, time: 5.0, fishAction: true, yields: [{ item: "raw_paddlefish", qty: 1 }] },
       { id: "fish_legendary_catfish", name: "Chase the Legendary Catfish", level: 40, xp: 45, time: 6.0, successChance: 0.25,
         yields: [{ item: "legendary_catfish", qty: 1 }] },
+      { id: "fish_gar",      name: "Fish for Gar",        level: 44, xp: 40, time: 5.4, fishAction: true, yields: [{ item: "raw_gar", qty: 1 }] },
+      { id: "fish_steelhead", name: "Fish for Steelhead", level: 50, xp: 46, time: 5.8, fishAction: true, yields: [{ item: "raw_steelhead", qty: 1 }] },
+      { id: "fish_golden_trout", name: "Chase the Golden Trout", level: 55, xp: 60, time: 6.5, successChance: 0.3,
+        yields: [{ item: "raw_golden_trout", qty: 1 }] },
+    ],
+  },
+
+  cooking: {
+    name: "Cooking",
+    icon: "🍳",
+    requires: [{ skill: "farming", level: 3 }, { skill: "fishing", level: 3 }],
+    actions: [
+      { id: "cook_campfire_perch", name: "Cook Campfire Perch", level: 1, xp: 5, time: 2.0,
+        consumes: [{ item: "raw_perch", qty: 1 }], yields: [{ item: "campfire_perch", qty: 1 }] },
+      { id: "cook_egg_battered_bluegill", name: "Cook Egg-Battered Bluegill", level: 5, xp: 9, time: 2.4,
+        consumes: [{ item: "raw_bluegill", qty: 1 }, { item: "egg", qty: 1 }], yields: [{ item: "egg_battered_bluegill", qty: 1 }] },
+      { id: "cook_trout_with_wild_carrots", name: "Cook Trout with Wild Carrots", level: 9, xp: 14, time: 2.8,
+        consumes: [{ item: "raw_trout", qty: 1 }, { item: "carrot", qty: 1 }], yields: [{ item: "trout_with_wild_carrots", qty: 1 }] },
+      { id: "cook_fried_catfish_potatoes", name: "Cook Fried Catfish & Potatoes", level: 13, xp: 19, time: 3.2,
+        consumes: [{ item: "raw_catfish", qty: 1 }, { item: "potato", qty: 1 }], yields: [{ item: "fried_catfish_potatoes", qty: 1 }] },
+      { id: "cook_cornbread_crusted_pike", name: "Cook Cornbread-Crusted Pike", level: 17, xp: 24, time: 3.6,
+        consumes: [{ item: "raw_pike", qty: 1 }, { item: "corn", qty: 1 }, { item: "wheat", qty: 1 }], yields: [{ item: "cornbread_crusted_pike", qty: 1 }] },
+      { id: "cook_bass_corn_skillet", name: "Cook Bass & Corn Skillet", level: 21, xp: 29, time: 4.0,
+        consumes: [{ item: "raw_bass", qty: 1 }, { item: "corn", qty: 1 }], yields: [{ item: "bass_corn_skillet", qty: 1 }] },
+      { id: "cook_buttered_walleye", name: "Cook Buttered Walleye", level: 25, xp: 34, time: 4.2,
+        consumes: [{ item: "raw_walleye", qty: 1 }, { item: "milk", qty: 1 }], yields: [{ item: "buttered_walleye", qty: 1 }] },
+      { id: "cook_salmon_tomato_stew", name: "Cook Salmon Tomato Stew", level: 29, xp: 40, time: 4.6,
+        consumes: [{ item: "raw_salmon", qty: 1 }, { item: "tomato", qty: 2 }], yields: [{ item: "salmon_tomato_stew", qty: 1 }] },
+      { id: "cook_muskie_wheat_biscuits", name: "Cook Muskie & Wheat Biscuits", level: 33, xp: 46, time: 5.0,
+        consumes: [{ item: "raw_muskie", qty: 1 }, { item: "wheat", qty: 2 }, { item: "egg", qty: 1 }], yields: [{ item: "muskie_wheat_biscuits", qty: 1 }] },
+      { id: "cook_hearty_fish_stew", name: "Cook Hearty Fish Stew", level: 37, xp: 52, time: 5.4,
+        consumes: [{ item: "raw_pike", qty: 1 }, { item: "potato", qty: 1 }, { item: "carrot", qty: 1 }, { item: "tomato", qty: 1 }], yields: [{ item: "hearty_fish_stew", qty: 1 }] },
+      { id: "cook_sturgeon_steak_dinner", name: "Cook Sturgeon Steak Dinner", level: 41, xp: 58, time: 5.8,
+        consumes: [{ item: "raw_sturgeon", qty: 1 }, { item: "potato", qty: 2 }, { item: "carrot", qty: 1 }], yields: [{ item: "sturgeon_steak_dinner", qty: 1 }] },
+      { id: "cook_paddlefish_chowder", name: "Cook Paddlefish Chowder", level: 45, xp: 64, time: 6.2,
+        consumes: [{ item: "raw_paddlefish", qty: 1 }, { item: "milk", qty: 2 }, { item: "potato", qty: 1 }], yields: [{ item: "paddlefish_chowder", qty: 1 }] },
+      { id: "cook_steelhead_supreme", name: "Cook Steelhead Supreme", level: 50, xp: 72, time: 6.6,
+        consumes: [{ item: "raw_steelhead", qty: 1 }, { item: "corn", qty: 2 }, { item: "tomato", qty: 2 }], yields: [{ item: "steelhead_supreme", qty: 1 }] },
+      { id: "cook_golden_trout_feast", name: "Cook Golden Trout Feast", level: 56, xp: 100, time: 8.0,
+        consumes: [{ item: "raw_golden_trout", qty: 1 }, { item: "corn", qty: 2 }, { item: "tomato", qty: 2 }, { item: "potato", qty: 2 }], yields: [{ item: "golden_trout_feast", qty: 1 }] },
     ],
   },
 
