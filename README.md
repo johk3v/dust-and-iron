@@ -61,6 +61,7 @@ Every Construction Building and utility building still consumes Foundation/Wall/
 - **Store** — the game's economy, a separate tab from Storage. Sections unlock based on progress (not skill level) — the **Trading Post** unlocks after Scouting Local Trails 10 times (very basic trail goods), the **General Store** unlocks once the Settlement's General Store is built (100 population — real crafting materials) — discounted by any Settlement Trading Post/General Store buffs you've built.
 - Food/healing: Fishing catches and Store rations restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting.
 - Gold-colored XP bars with a numeric XP readout (e.g. "108 / 210 XP (102 to next level)") under every bar, skill and combat alike
+- Every skill tab's header (title/emoji, level badge, XP bar) stays sticky at the top of the viewport while you scroll the action list, so running a far-down action (e.g. Chop Redwood) never hides the XP bar that's tracking it
 - Inline per-activity progress bars right in each action row, correctly scoped per tab (switching skills while one is running no longer shows a stuck/stale bar)
 - Currency displayed as `$123` instead of "123 Dollars"
 - Melvor-style exponential XP curve and leveling (same curve for all non-combat and combat skills)

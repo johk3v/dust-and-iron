@@ -91,6 +91,23 @@ body {
   margin-bottom: 14px;
 }
 
+/* --- Sticky per-skill header: title/emoji + level badge + XP bar
+   stay pinned to the top of the viewport while scrolling through a
+   long action list, so starting/stopping an action far down the
+   page (e.g. Chop Redwood) doesn't require scrolling back up just
+   to see the XP bar move. Sticks only while its parent .panel is
+   still on screen (CSS sticky naturally stops at the panel's own
+   padding edge), so it doesn't follow you into other tabs/panels. */
+.sticky-skill-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--panel);
+  margin: -14px -14px 10px;
+  padding: 14px 14px 10px;
+  box-shadow: 0 4px 6px -4px rgba(0,0,0,0.6);
+}
+
 .skill-header {
   display: flex;
   justify-content: space-between;

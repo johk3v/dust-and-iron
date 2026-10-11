@@ -831,12 +831,14 @@ function renderSkillTab(skillId) {
 
   let html = `
     <div class="panel">
-      <div class="skill-header">
-        <h2>${skill.icon} ${skill.name}</h2>
-        <div class="level-badge">Lv. ${level}</div>
+      <div class="sticky-skill-header">
+        <div class="skill-header">
+          <h2>${skill.icon} ${skill.name}</h2>
+          <div class="level-badge">Lv. ${level}</div>
+        </div>
+        <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
+        <div class="xp-label">${formatXpLabel(level, xp)}</div>
       </div>
-      <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
-      <div class="xp-label">${formatXpLabel(level, xp)}</div>
       ${lockHtml}
       <div class="action-list">
   `;
@@ -1266,7 +1268,7 @@ function renderSettlementTab() {
   const constructionHtml = renderBuildingGroup("construction", true);
 
   document.getElementById("tab-settlement").innerHTML = `
-    <div class="panel">
+    <div class="panel sticky-skill-header">
       <div class="skill-header">
         <h2>${skill.icon} ${skill.name}</h2>
         <div class="level-badge">Lv. ${level}</div>
