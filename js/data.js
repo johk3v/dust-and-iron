@@ -398,7 +398,10 @@ const SKILLS = {
   debauchery: {
     name: "Debauchery",
     icon: "🥃",
-    requires: [{ skill: "settlement", level: 10 }, { skill: "exploration", level: 10 }],
+    // Gated by the Saloon being built (itself population-gated), not by
+    // raw skill levels like every other skill — see skillUnlocked().
+    requiresBuilding: "saloon_base",
+    requiresBuildingLabel: "Saloon (Settlement)",
     actions: [
       { id: "nurse_a_whiskey", name: "Nurse a Whiskey",  level: 1,  xp: 6,  time: 2.0, goldCost: 5,
         successChance: 0.6, goldYield: { min: 5, max: 15 } },
@@ -494,18 +497,32 @@ const STORE_SECTIONS = [
     id: "trading_post",
     name: "Trading Post",
     icon: "🤝",
-    description: "A dusty counter at the edge of town. The trader will sell you the basics once you've proven you know the trails.",
+    description: "A dusty counter at the edge of town. Very basic trail necessities only — for proper crafting materials, you'll want the General Store.",
     unlock: { type: "actionCount", actionId: "scout_trails", count: 10, label: "Scout Local Trails (Exploration)" },
     items: [
       { item: "lead_bullet",       qty: 10, price: 15 },
       { item: "trail_rations",     qty: 1,  price: 12 },
       { item: "canteen_of_water",  qty: 1,  price: 5 },
       { item: "worn_boots",        qty: 1,  price: 10 },
-      { item: "leather_hat",       qty: 1,  price: 25 },
-      { item: "leather_vest",      qty: 1,  price: 35 },
-      { item: "pine_wood",         qty: 5,  price: 8 },
-      { item: "potato",            qty: 5,  price: 6 },
-      { item: "egg",               qty: 5,  price: 4 },
+    ],
+  },
+  {
+    id: "general_store",
+    name: "General Store",
+    icon: "🏬",
+    description: "A proper general store, stocked once the settlement has grown large enough to support one. Sells real crafting materials.",
+    unlock: { type: "buildingBuilt", stageId: "general_store_base", label: "Build the General Store (Settlement, 100 population)" },
+    items: [
+      { item: "pine_wood",   qty: 10, price: 14 },
+      { item: "oak_wood",    qty: 10, price: 24 },
+      { item: "cotton",      qty: 10, price: 16 },
+      { item: "iron_bar",    qty: 5,  price: 40 },
+      { item: "steel_bar",   qty: 5,  price: 70 },
+      { item: "silver_bar",  qty: 3,  price: 90 },
+      { item: "leather_hat", qty: 1,  price: 25 },
+      { item: "leather_vest",qty: 1,  price: 35 },
+      { item: "potato",      qty: 10, price: 10 },
+      { item: "egg",         qty: 10, price: 8 },
     ],
   },
 ];
@@ -531,26 +548,48 @@ const STORE_SECTIONS = [
 // actually applied in the engine.
 // ------------------------------------------------------------
 
+// ------------------------------------------------------------
+// SETTLEMENT: POPULATION (housing)
+// Repeatable buildings — you can build as many of each as you can
+// afford. Each unit adds a flat amount of population; population is
+// the gate for the larger Construction Buildings below (in addition
+// to a Settlement level requirement). Cost scales up a little with
+// each additional unit already built (baseCost * 1.15^count) so
+// population growth isn't a flat-cost grind forever.
+// ------------------------------------------------------------
+
+const HOUSING = [
+  { id: "tent",      name: "Tent",      icon: "⛺", level: 1,  pop: 1,  cost: { pine_wood: 2 },                goldCost: 15,  xp: 10 },
+  { id: "shack",     name: "Shack",     icon: "🛖", level: 6,  pop: 2,  cost: { pine_wood: 4, cotton: 1 },     goldCost: 35,  xp: 18 },
+  { id: "house",     name: "House",     icon: "🏠", level: 14, pop: 5,  cost: { oak_wood: 4, cotton: 3, iron_bar: 1 }, goldCost: 90,  xp: 32 },
+  { id: "apartment", name: "Apartment", icon: "🏢", level: 26, pop: 20, cost: { steel_bar: 3, cotton: 6 },     goldCost: 320, xp: 70 },
+];
+
+// ------------------------------------------------------------
+// SETTLEMENT: BUILDINGS
+// Two categories (see `category` field on each building):
+//
+//  - "non_construction": standalone utility buildings. They do NOT
+//    need Foundations/Walls or population — just gold + a bit of raw
+//    material. Single-stage, built once.
+//  - "construction": the big civic buildings. Gated by BOTH a
+//    Settlement level AND a population threshold (popRequired),
+//    reached by building Housing above. Needs Foundation/Wall (and
+//    Roof/Balcony for the biggest one) on top of other materials.
+//    Each one unlocks something real — a Store section, a whole
+//    skill, or a standing buff — not just a flat % tweak.
+//
+// Every building here is single-stage (built: true/false via
+// state.constructedBuildings, same mechanism as before) — the old
+// multi-stage "addition" chains were retired in favor of the
+// population-gating system.
+// ------------------------------------------------------------
+
 const BUILDINGS = [
   // ============================================================
   // NON-CONSTRUCTION BUILDINGS — buildable standalone, no
-  // Foundation/Wall required.
+  // Foundation/Wall or population required.
   // ============================================================
-  {
-    id: "tent",
-    name: "Tent",
-    icon: "⛺",
-    category: "non_construction",
-    description: "A simple canvas tent. Somewhere to rest before the real buildings go up.",
-    stages: [
-      {
-        id: "tent_base", name: "Tent", level: 1,
-        cost: { pine_wood: 2 },
-        goldCost: 15, xp: 10,
-        buff: { type: "max_hp_bonus", value: 5, label: "+5 Max HP" },
-      },
-    ],
-  },
   {
     id: "trading_post_building",
     name: "Trading Post",
@@ -613,174 +652,52 @@ const BUILDINGS = [
   },
 
   // ============================================================
-  // CONSTRUCTION BUILDINGS — require Foundation + Wall (and bigger
-  // stages also need Roof/Balcony). Listed in unlock order.
+  // CONSTRUCTION BUILDINGS — gated by Settlement level AND
+  // population (see popRequired on the stage), plus Foundation/
+  // Wall/Roof/Balcony + other materials. Listed in unlock order.
   // ============================================================
+  {
+    id: "general_store",
+    name: "General Store",
+    icon: "🏬",
+    category: "construction",
+    description: "A real general store, once the town is big enough to support one. Stocks proper crafting materials, not just trail basics.",
+    stages: [
+      {
+        id: "general_store_base", name: "General Store", level: 20, popRequired: 100,
+        cost: { foundation: 4, wall: 6, roof: 2, iron_bar: 3 },
+        goldCost: 300, xp: 80,
+        buff: { type: "unlock_general_store", value: 1, label: "Unlocks the General Store (Store tab)" },
+      },
+    ],
+  },
   {
     id: "saloon",
     name: "Saloon",
     icon: "🍺",
     category: "construction",
-    description: "The heart of frontier nightlife. Build it, then add onto it over time.",
+    description: "The heart of frontier nightlife. A town this size can finally support one.",
     stages: [
       {
-        id: "saloon_base", name: "Saloon", level: 10,
-        cost: { foundation: 5, wall: 8, oak_wood: 4, iron_bar: 3 },
-        goldCost: 80, xp: 30,
-        buff: { type: "debauchery_gold_pct", value: 0.05, label: "+5% gold from Debauchery" },
-      },
-      {
-        id: "saloon_gambling_room", name: "+ Gambling Room", level: 16,
-        cost: { foundation: 3, wall: 4, silver_bar: 2 },
-        goldCost: 150, xp: 45,
-        buff: { type: "debauchery_gold_pct", value: 0.10, label: "+10% gold from Debauchery" },
-      },
-      {
-        id: "saloon_speakeasy", name: "+ Speakeasy", level: 24,
-        cost: { foundation: 4, wall: 6, steel_bar: 3, cotton: 5 },
-        goldCost: 300, xp: 65,
-        buff: { type: "debauchery_success_pct", value: 0.15, label: "+15% success chance on Debauchery games" },
+        id: "saloon_base", name: "Saloon", level: 28, popRequired: 500,
+        cost: { foundation: 6, wall: 10, roof: 3, oak_wood: 5 },
+        goldCost: 600, xp: 140,
+        buff: { type: "unlock_debauchery", value: 1, label: "Unlocks the Debauchery skill" },
       },
     ],
   },
   {
-    id: "farmhouse",
-    name: "Farmhouse",
-    icon: "🏡",
+    id: "jail",
+    name: "Jail",
+    icon: "🚔",
     category: "construction",
-    description: "A proper farmhouse to run the fields from. Teaches better technique, not just more muscle.",
+    description: "Law and order for a real town. A standing jail gives everyone the confidence to fight harder.",
     stages: [
       {
-        id: "farmhouse_base", name: "Farmhouse", level: 14,
-        cost: { foundation: 4, wall: 6, wheat: 5, pine_wood: 3 },
-        goldCost: 100, xp: 35,
-        buff: { type: "farming_xp_pct", value: 0.10, label: "+10% XP from Farming actions" },
-      },
-      {
-        id: "farmhouse_henhouse_wing", name: "+ Henhouse Wing", level: 20,
-        cost: { foundation: 2, wall: 3, roof: 2, egg: 10 },
-        goldCost: 160, xp: 50,
-        buff: { type: "farming_xp_pct", value: 0.15, label: "+15% XP from Farming actions" },
-      },
-    ],
-  },
-  {
-    id: "barn",
-    name: "Barn",
-    icon: "🏚️",
-    category: "construction",
-    description: "Storage and stock capacity for the farm — more produce per harvest.",
-    stages: [
-      {
-        id: "barn_base", name: "Barn", level: 18,
-        cost: { foundation: 5, wall: 8, roof: 3, oak_wood: 4 },
-        goldCost: 180, xp: 55,
-        buff: { type: "farming_yield_bonus_pct", value: 0.08, label: "+8% yield from Farming actions" },
-      },
-      {
-        id: "barn_silo", name: "+ Silo", level: 24,
-        cost: { foundation: 3, wall: 4, roof: 2, steel_bar: 2 },
-        goldCost: 260, xp: 70,
-        buff: { type: "farming_yield_bonus_pct", value: 0.12, label: "+12% yield from Farming actions" },
-      },
-    ],
-  },
-  {
-    id: "market",
-    name: "Market",
-    icon: "🏪",
-    category: "construction",
-    description: "A covered market square. Better prices buying and selling.",
-    stages: [
-      {
-        id: "market_base", name: "Market", level: 22,
-        cost: { foundation: 5, wall: 7, roof: 3, cotton: 6 },
-        goldCost: 220, xp: 60,
-        buff: { type: "sell_price_pct", value: 0.05, label: "+5% gold from selling items" },
-      },
-      {
-        id: "market_trade_stalls", name: "+ Trade Stalls", level: 28,
-        cost: { foundation: 3, wall: 5, balcony: 2, silver_bar: 2 },
-        goldCost: 320, xp: 80,
-        buff: { type: "store_discount_pct", value: 0.10, label: "+10% discount on Store purchases" },
-      },
-    ],
-  },
-  {
-    id: "forge",
-    name: "Blacksmith's Forge",
-    icon: "⚒️",
-    category: "construction",
-    description: "Where the town's ore becomes bars, bullets, and blades. Expand it as Craftsmanship grows.",
-    stages: [
-      {
-        id: "forge_base", name: "Blacksmith's Forge", level: 26,
-        cost: { foundation: 4, wall: 6, roof: 2, iron_bar: 2 },
-        goldCost: 280, xp: 70,
-        buff: { type: "ammo_bonus_pct", value: 0.10, label: "+10% ammo yield from casting" },
-      },
-      {
-        id: "forge_gunsmith_wing", name: "+ Gunsmith Wing", level: 32,
-        cost: { foundation: 3, wall: 5, balcony: 2, steel_bar: 3 },
-        goldCost: 400, xp: 95,
-        buff: { type: "craft_weapon_xp_pct", value: 0.15, label: "+15% XP crafting weapons" },
-      },
-      {
-        id: "forge_vault_room", name: "+ Vault Room", level: 40,
-        cost: { foundation: 5, wall: 8, balcony: 3, steel_bar: 4, silver_bar: 2 },
-        goldCost: 600, xp: 130,
-        buff: { type: "death_gold_loss_reduction_pct", value: 0.5, label: "Halves gold lost when knocked out" },
-      },
-    ],
-  },
-  {
-    id: "sheriff_office",
-    name: "Sheriff",
-    icon: "🌟",
-    category: "construction",
-    description: "Law and order, frontier-style. Appointing a sheriff grants the whole town extra protection.",
-    stages: [
-      {
-        id: "sheriff_office_base", name: "Sheriff", level: 30,
-        cost: { foundation: 3, wall: 4, roof: 1, silver_bar: 3, cotton: 5 },
-        goldCost: 350, xp: 90,
-        buff: { type: "global_defense", value: 2, label: "+2 Defense in all combat" },
-      },
-    ],
-  },
-  {
-    id: "bank_vault",
-    name: "Bank",
-    icon: "🏦",
-    category: "construction",
-    description: "A reinforced steel vault for the town's gold reserves.",
-    stages: [
-      {
-        id: "bank_vault_base", name: "Bank", level: 34,
-        cost: { foundation: 4, wall: 6, roof: 2, balcony: 1, steel_bar: 4 },
-        goldCost: 450, xp: 110,
-        buff: { type: "sell_price_pct", value: 0.05, label: "+5% gold from selling items" },
-      },
-    ],
-  },
-  {
-    id: "doctor",
-    name: "Doctor",
-    icon: "⚕️",
-    category: "construction",
-    description: "A clinic to patch up gunshot wounds and snake bites. Expand it into proper surgery later.",
-    stages: [
-      {
-        id: "doctor_base", name: "Doctor", level: 38,
-        cost: { foundation: 4, wall: 6, roof: 3, cattle_hide: 4, cotton: 4 },
-        goldCost: 500, xp: 120,
-        buff: { type: "food_heal_bonus_pct", value: 0.15, label: "+15% HP restored from food" },
-      },
-      {
-        id: "doctor_surgery", name: "+ Surgery", level: 44,
-        cost: { foundation: 3, wall: 5, balcony: 2, steel_bar: 3, silver_bar: 2 },
-        goldCost: 700, xp: 150,
-        buff: { type: "max_hp_bonus", value: 10, label: "+10 Max HP" },
+        id: "jail_base", name: "Jail", level: 36, popRequired: 1000,
+        cost: { foundation: 8, wall: 14, roof: 4, steel_bar: 5 },
+        goldCost: 1000, xp: 220,
+        buff: { type: "combat_dmg_bonus_pct", value: 0.10, label: "+10% damage in all combat" },
       },
     ],
   },
@@ -789,13 +706,13 @@ const BUILDINGS = [
     name: "Train Station",
     icon: "🚂",
     category: "construction",
-    description: "Charter a railroad line and connect the settlement to the wider frontier economy.",
+    description: "A proper railroad connection to the wider frontier economy — only worth building once the settlement has truly boomed.",
     stages: [
       {
-        id: "railroad_depot_base", name: "Train Station", level: 42,
-        cost: { foundation: 6, wall: 10, roof: 4, balcony: 2, steel_bar: 8, ironwood: 4 },
-        goldCost: 900, xp: 200,
-        buff: { type: "offline_cap_hours_bonus", value: 3, label: "+3 hours to offline progress cap" },
+        id: "railroad_depot_base", name: "Train Station", level: 48, popRequired: 5000,
+        cost: { foundation: 12, wall: 20, roof: 6, balcony: 4, steel_bar: 10, silver_bar: 4 },
+        goldCost: 3000, xp: 450,
+        buff: { type: "skill_xp_bonus_pct", value: 0.10, label: "+10% XP from all non-combat skills" },
       },
     ],
   },

@@ -26,7 +26,7 @@ Progress autosaves to `localStorage` every 5 seconds, and the game simulates off
 - **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail); scouting trails also feeds the Store's Trading Post unlock
 - **Craftsmanship** — smelt bars and craft weapons, ammo, and armor. *Soft-locked* until Prospecting 5 + Woodcutting 5.
 - **Settlement** — a construction system of its own (see below). *Soft-locked* until Craftsmanship 10 + Farming 5.
-- **Debauchery** — gamble, drink, and brawl for gold and rare charms. *Soft-locked* until Settlement 10 + Exploration 10.
+- **Debauchery** — gamble, drink, and brawl for gold and rare charms. *Locked* until the Saloon is built in Settlement (requires 500 population).
 
 Soft-locked skills stay visible in the nav (marked with 🔒) so you always know what's coming, but their actions can't be run until the prerequisites are met. The lock indicator clears live the moment the requirement is met, no reload needed.
 
@@ -42,21 +42,24 @@ Turn-based (tick-based) fights across 4 regions (Dusty Gulch → Whispering Pine
 Six gear slots: **Weapon**, **Head**, **Top**, **Bottom**, **Boots**, and an **Extra** customization slot for accessories (badges, charms, trinkets) that grant bonus damage % and/or defense. Armor reduces incoming damage; accessories can boost both offense and defense.
 
 ### Settlement: construction system
-Settlement is organized into three sections, in this order:
-1. **Non-Construction Buildings** — buildable standalone, no Foundation/Wall needed: Tent, Trading Post, Well, Mining Hut, Woodcutters Camp.
-2. **Construction Materials** — Foundation and Wall are the only two base materials buildable by themselves; bigger additions also need Roof and/or Balcony. All four are simple Settlement actions (cost gold + a little raw material).
-3. **Construction Buildings** (shown in unlock order) — every one of these requires some number of Foundation/Wall (and often Roof/Balcony) plus other materials. Buildings are **chains of stages**: the first stage is the base structure, later stages are **additions** that require the previous stage to already exist. Two chains as a flagship example:
-   - 🍺 **Saloon** → + Gambling Room → + Speakeasy (boosts Debauchery gold/success odds)
-   - ⚒️ **Blacksmith's Forge** → + Gunsmith Wing → + Vault Room (ammo yield, weapon-crafting XP, reduced gold loss on death)
+Settlement is organized into three sections, each a separate panel, with every buildable item indented as a row directly under its category:
 
-   Plus: Farmhouse → Henhouse Wing, Barn → Silo, Market → Trade Stalls, Doctor → Surgery, and single-stage Sheriff/Bank/Train Station.
+1. **Non-Construction Buildings** — buildable standalone, no Foundation/Wall needed. Split into two kinds:
+   - **Housing** (repeatable — build as many as you can afford): Tent (+1 pop), Shack (+2 pop), House (+5 pop), Apartment (+20 pop). Each builds the settlement's **population**, shown live at the top of the tab. Per-unit cost scales up 15% with each one already built, so population growth isn't a flat grind forever.
+   - **Utility buildings** (single-stage, built once): Trading Post, Well, Mining Hut, Woodcutters Camp — each grants a standing buff (Store discount, offline-progress cap, gather yield).
+2. **Construction Materials** — Foundation and Wall are the only two base materials buildable by themselves; Roof and Balcony are needed for bigger builds. All four are simple Settlement actions, sorted by level.
+3. **Construction Buildings** (shown in unlock order, no "(Req. ...)" clutter — requirements show inline instead) — the big civic buildings, each gated by **both** a Settlement level **and** a population threshold reached via Housing:
+   - 🏬 **General Store** — 100 population. Unlocks the General Store section in the Store tab (real crafting materials — wood, bars, cotton — not just trail basics).
+   - 🍺 **Saloon** — 500 population. Unlocks the **Debauchery** skill.
+   - 🚔 **Jail** — 1,000 population. +10% damage in all combat.
+   - 🚂 **Train Station** — 5,000 population. +10% XP from every non-combat skill.
 
-Every stage grants a **permanent buff** the moment it's built — live gameplay effects (ammo/ore/wood/crop yield, Farming XP, sell price, Store discount, food healing, max HP, defense, offline progress cap, death penalty reduction), not just flavor text.
+Every Construction Building and utility building still consumes Foundation/Wall/Roof/Balcony plus other materials and gold, same as before — population is an *additional* gate on top, not a replacement for the material cost.
 
 ### Other
 - **Storage** — view and sell your inventory (formerly "Bank"); food items show an "Eat" button to heal HP, plus a "Sell #" box to sell a custom quantity (alongside Sell 1 / Sell All)
-- **Store** — the game's economy, a separate tab from Storage. Sections unlock based on progress (not skill level) — e.g. the **Trading Post** section unlocks after Scouting Local Trails 10 times — and sell a flat-price loot table of basic goods (ammo, food, starter armor, raw materials) for gold, discounted by any Settlement Trading Post/Market buffs you've built.
-- Food/healing: Fishing catches and Store rations restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting; a built Doctor boosts how much HP food restores.
+- **Store** — the game's economy, a separate tab from Storage. Sections unlock based on progress (not skill level) — the **Trading Post** unlocks after Scouting Local Trails 10 times (very basic trail goods), the **General Store** unlocks once the Settlement's General Store is built (100 population — real crafting materials) — discounted by any Settlement Trading Post/General Store buffs you've built.
+- Food/healing: Fishing catches and Store rations restore HP when eaten, from Storage or via a quick-eat bar inside Combat while fighting.
 - Gold-colored XP bars with a numeric XP readout (e.g. "108 / 210 XP (102 to next level)") under every bar, skill and combat alike
 - Inline per-activity progress bars right in each action row, correctly scoped per tab (switching skills while one is running no longer shows a stuck/stale bar)
 - Currency displayed as `$123` instead of "123 Dollars"

@@ -45,6 +45,7 @@ function freshState() {
     currentAction: null, // { skillId, actionId, progress (0-1), duration }
     actionCounts: {}, // actionId -> number of times completed (success or fail), powers Store unlocks
     constructedBuildings: [], // array of building-stage ids, in construction order
+    housingBuilt: {}, // housingId -> count built, powers Settlement population
     lastSeen: Date.now(),
   };
 }
@@ -67,6 +68,7 @@ function loadState() {
     merged.combatSkillXp = Object.assign({}, fresh.combatSkillXp, parsed.combatSkillXp || {});
     merged.actionCounts = Object.assign({}, fresh.actionCounts, parsed.actionCounts || {});
     merged.constructedBuildings = parsed.constructedBuildings || fresh.constructedBuildings;
+    merged.housingBuilt = Object.assign({}, fresh.housingBuilt, parsed.housingBuilt || {});
     return merged;
   } catch (e) {
     console.warn("Save corrupted, starting fresh", e);
@@ -107,7 +109,10 @@ function formatXpLabel(level, xp) {
 }
 
 function addXp(skillId, amount) {
-  state.skillXp[skillId] = (state.skillXp[skillId] || 0) + amount;
+  // Train Station (Settlement, population-gated) buff: a standing XP
+  // bonus across every non-combat skill.
+  const boosted = Math.round(amount * (1 + getSettlementBuff("skill_xp_bonus_pct")));
+  state.skillXp[skillId] = (state.skillXp[skillId] || 0) + boosted;
   const newLevel = levelFromXp(state.skillXp[skillId]);
   if (newLevel > state.skillLevels[skillId]) {
     state.skillLevels[skillId] = newLevel;
@@ -141,12 +146,21 @@ function recalcMaxHp() {
 // ---------- Skill soft-locks ----------
 function skillUnlocked(skillId) {
   const skill = SKILLS[skillId];
+  // Debauchery is a special case: it's gated by the Saloon being built
+  // (which is itself gated by Settlement population), not by raw skill
+  // levels like every other skill.
+  if (skill.requiresBuilding) return isStageBuilt(skill.requiresBuilding);
   if (!skill.requires) return true;
   return skill.requires.every(r => state.skillLevels[r.skill] >= r.level);
 }
 
 function skillLockReasons(skillId) {
   const skill = SKILLS[skillId];
+  if (skill.requiresBuilding) {
+    const built = isStageBuilt(skill.requiresBuilding);
+    return [{ skill: null, name: skill.requiresBuildingLabel || "the required building", need: null, have: null, met: built,
+      custom: built ? `✓ ${skill.requiresBuildingLabel} built` : `✗ ${skill.requiresBuildingLabel} not yet built` }];
+  }
   if (!skill.requires) return [];
   return skill.requires.map(r => ({
     skill: r.skill,
@@ -195,13 +209,22 @@ function storeSectionUnlocked(section) {
   if (u.type === "actionCount") {
     return (state.actionCounts[u.actionId] || 0) >= u.count;
   }
+  if (u.type === "buildingBuilt") {
+    return isStageBuilt(u.stageId);
+  }
   return true;
 }
 
 function storeSectionProgress(section) {
   const u = section.unlock;
-  if (!u || u.type !== "actionCount") return null;
-  return { have: state.actionCounts[u.actionId] || 0, need: u.count, label: u.label };
+  if (!u) return null;
+  if (u.type === "actionCount") {
+    return { have: state.actionCounts[u.actionId] || 0, need: u.count, label: u.label };
+  }
+  if (u.type === "buildingBuilt") {
+    return { have: isStageBuilt(u.stageId) ? 1 : 0, need: 1, label: u.label };
+  }
+  return null;
 }
 
 function buyStoreItem(sectionId, itemIndex) {
@@ -253,6 +276,10 @@ function buildStage(buildingId) {
     toast(`Need Settlement level ${stage.level}`);
     return;
   }
+  if (stage.popRequired && getPopulation() < stage.popRequired) {
+    toast(`Need ${stage.popRequired.toLocaleString()} population (have ${getPopulation().toLocaleString()})`);
+    return;
+  }
   if (!canAffordStage(stage)) {
     toast("Missing materials or gold for this stage.");
     return;
@@ -263,6 +290,53 @@ function buildStage(buildingId) {
   addXp("settlement", stage.xp);
   recalcMaxHp(); // some buffs (e.g. max_hp_bonus) take effect immediately
   toast(`🏗️ Built: ${stage.name}!`);
+  render();
+}
+
+// ---------- Settlement / Population (Housing) ----------
+function getPopulation() {
+  return HOUSING.reduce((total, h) => total + (state.housingBuilt[h.id] || 0) * h.pop, 0);
+}
+
+// Housing cost scales up 15% per unit already built of that TYPE, so
+// population growth isn't a flat-cost grind forever but also doesn't
+// explode combinatorially across different housing types.
+function housingCostMultiplier(housingId) {
+  const built = state.housingBuilt[housingId] || 0;
+  return Math.pow(1.15, built);
+}
+
+function scaledHousingCost(h) {
+  const mult = housingCostMultiplier(h.id);
+  const cost = {};
+  Object.keys(h.cost || {}).forEach(item => { cost[item] = Math.ceil(h.cost[item] * mult); });
+  const goldCost = h.goldCost ? Math.ceil(h.goldCost * mult) : 0;
+  return { cost, goldCost };
+}
+
+function canAffordHousing(h) {
+  const { cost, goldCost } = scaledHousingCost(h);
+  if (goldCost && state.gold < goldCost) return false;
+  return Object.keys(cost).every(item => (state.inventory[item] || 0) >= cost[item]);
+}
+
+function buildHousing(housingId) {
+  const h = HOUSING.find(x => x.id === housingId);
+  if (!h) return;
+  if (state.skillLevels.settlement < h.level) {
+    toast(`Need Settlement level ${h.level}`);
+    return;
+  }
+  if (!canAffordHousing(h)) {
+    toast("Missing materials or gold.");
+    return;
+  }
+  const { cost, goldCost } = scaledHousingCost(h);
+  if (goldCost) state.gold -= goldCost;
+  Object.keys(cost).forEach(item => removeItem(item, cost[item]));
+  state.housingBuilt[h.id] = (state.housingBuilt[h.id] || 0) + 1;
+  addXp("settlement", h.xp);
+  toast(`🏗️ Built: ${h.icon} ${h.name}! (+${h.pop} population)`);
   render();
 }
 
@@ -450,8 +524,11 @@ function getTotalDefense() {
 
 function getTotalDmgBonusPct() {
   const id = state.equipment.accessory;
-  if (id && ITEMS[id]) return ITEMS[id].dmgBonusPct || 0;
-  return 0;
+  let bonus = (id && ITEMS[id]) ? (ITEMS[id].dmgBonusPct || 0) : 0;
+  // Jail (Settlement, population-gated) buff: a standing damage bonus
+  // in all combat for the whole town, not tied to equipment.
+  bonus += getSettlementBuff("combat_dmg_bonus_pct");
+  return bonus;
 }
 
 function ownedItemsForSlot(slot) {
@@ -747,7 +824,7 @@ function renderSkillTab(skillId) {
     lockHtml = `
       <div class="lock-banner">
         <strong>🔒 ${skill.name} is locked.</strong> Reach the following first:
-        ${reasons.map(r => `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
+        ${reasons.map(r => r.custom ? `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.custom}</div>` : `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
       </div>
     `;
   }
@@ -1046,7 +1123,7 @@ function renderSettlementTab() {
     lockHtml = `
       <div class="lock-banner">
         <strong>🔒 ${skill.name} is locked.</strong> Reach the following first:
-        ${reasons.map(r => `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
+        ${reasons.map(r => r.custom ? `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.custom}</div>` : `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
       </div>
     `;
   }
@@ -1101,9 +1178,12 @@ function renderSettlementTab() {
   `;
 
   // Renders one category's buildings (sorted by their first/base
-  // stage's level requirement, i.e. "in order of unlocks") as a
-  // sequence of building panels.
-  function renderBuildingGroup(category) {
+  // stage's level requirement, i.e. "in order of unlocks"), indented
+  // as rows inside a single panel for that category — same visual
+  // pattern as the Construction Materials action-list above.
+  // `stripParens`: Construction Buildings drop the "(Req. ...)"
+  // qualifier text per Kev's request; Non-Construction keeps it.
+  function renderBuildingGroup(category, stripParens) {
     return BUILDINGS
       .filter(b => b.category === category)
       .slice()
@@ -1112,23 +1192,29 @@ function renderSettlementTab() {
         const idx = nextStageIndex(building);
         const completeStages = idx === null ? building.stages : building.stages.slice(0, idx);
         const nextStage = idx === null ? null : building.stages[idx];
+        const fullyBuilt = idx === null;
 
         const doneHtml = completeStages.map(s => `<div class="lock-req met">✓ ${s.name} — ${s.buff.label}</div>`).join("");
 
         let nextHtml = "";
         if (nextStage) {
           const levelLocked = level < nextStage.level;
+          const popLocked = !!(nextStage.popRequired && getPopulation() < nextStage.popRequired);
           const affordable = canAffordStage(nextStage);
           const costBits = Object.keys(nextStage.cost || {}).map(item => `${ITEMS[item].icon} ${ITEMS[item].name} x${nextStage.cost[item]}`);
           if (nextStage.goldCost) costBits.push(`$${nextStage.goldCost}`);
+          const reqBits = [];
+          if (levelLocked) reqBits.push(`Settlement Lv.${nextStage.level}`);
+          if (popLocked) reqBits.push(`${nextStage.popRequired.toLocaleString()} population (have ${getPopulation().toLocaleString()})`);
+          const reqText = reqBits.length ? (stripParens ? `Needs ${reqBits.join(", ")}` : `(Req. ${reqBits.join(", ")})`) : "";
           nextHtml = `
-            <div class="action-row ${!unlocked || levelLocked ? 'locked' : ''}">
+            <div class="action-row ${!unlocked || levelLocked || popLocked ? 'locked' : ''}">
               <div class="action-info">
-                <div class="action-name">${nextStage.name} ${levelLocked ? `(Req. Settlement Lv.${nextStage.level})` : ''}</div>
+                <div class="action-name">${nextStage.name} ${reqText ? `<span class="action-sub">${reqText}</span>` : ''}</div>
                 <div class="action-sub">Needs: ${costBits.join(", ")} · ${nextStage.xp} xp</div>
                 <div class="action-sub" style="color:var(--gold)">Grants: ${nextStage.buff.label}</div>
               </div>
-              <button class="action-btn" ${!unlocked || levelLocked || !affordable ? 'disabled' : ''}
+              <button class="action-btn" ${!unlocked || levelLocked || popLocked || !affordable ? 'disabled' : ''}
                 onclick="buildStage('${building.id}')">Build</button>
             </div>
           `;
@@ -1137,9 +1223,9 @@ function renderSettlementTab() {
         }
 
         return `
-          <div class="panel">
-            <div class="skill-header"><h2>${building.icon} ${building.name}</h2></div>
-            <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">${building.description}</p>
+          <div class="building-row ${fullyBuilt ? 'fully-built' : ''}">
+            <div class="action-name">${building.icon} ${building.name}</div>
+            <p class="action-sub" style="margin:2px 0 6px;">${building.description}</p>
             ${doneHtml}
             ${nextHtml}
           </div>
@@ -1147,8 +1233,37 @@ function renderSettlementTab() {
       }).join("");
   }
 
-  const nonConstructionHtml = renderBuildingGroup("non_construction");
-  const constructionHtml = renderBuildingGroup("construction");
+  const population = getPopulation();
+  const populationHtml = `<div class="population-summary">👥 Settlement Population: ${population.toLocaleString()}</div>`;
+
+  // Housing ("Non-Construction Buildings" tier): repeatable, each
+  // unit adds flat population. Rendered the same indented-row pattern,
+  // sorted by level, with its own per-unit scaled cost.
+  const housingRowsHtml = HOUSING.slice().sort((a, b) => a.level - b.level).map(h => {
+    const levelLocked = level < h.level;
+    const locked = !unlocked || levelLocked;
+    const affordable = canAffordHousing(h);
+    const built = state.housingBuilt[h.id] || 0;
+    const { cost, goldCost } = scaledHousingCost(h);
+    const costBits = Object.keys(cost).map(item => `${ITEMS[item].icon} ${ITEMS[item].name} x${cost[item]}`);
+    if (goldCost) costBits.push(`$${goldCost}`);
+
+    return `
+      <div class="building-row">
+        <div class="action-row ${locked ? 'locked' : ''}">
+          <div class="action-info">
+            <div class="action-name">${h.icon} ${h.name} ${levelLocked ? `(Req. Lv.${h.level})` : ''} <span class="action-sub">Built: ${built} · +${h.pop} pop each</span></div>
+            <div class="action-sub">Needs: ${costBits.join(", ")} · ${h.xp} xp</div>
+          </div>
+          <button class="action-btn" ${locked || !affordable ? 'disabled' : ''}
+            onclick="buildHousing('${h.id}')">Build</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const nonConstructionHtml = renderBuildingGroup("non_construction", false);
+  const constructionHtml = renderBuildingGroup("construction", true);
 
   document.getElementById("tab-settlement").innerHTML = `
     <div class="panel">
@@ -1159,12 +1274,16 @@ function renderSettlementTab() {
       <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
       <div class="xp-label">${formatXpLabel(level, xp)}</div>
       ${lockHtml}
+      ${populationHtml}
     </div>
     <div class="panel">
       <div class="skill-header"><h2>🏠 Non-Construction Buildings</h2></div>
-      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Built standalone — no Foundation or Wall required.</p>
+      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Housing grows population; the other utility buildings below are built standalone — no Foundation or Wall required.</p>
+      <div class="building-group">
+        ${housingRowsHtml}
+        ${nonConstructionHtml}
+      </div>
     </div>
-    ${nonConstructionHtml}
     <div class="panel">
       <div class="skill-header"><h2>🧱 Construction Materials</h2></div>
       <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Foundation and Wall are the only two base materials buildable by themselves; Roof and Balcony are needed for bigger additions. Every Construction Building below consumes some of these.</p>
@@ -1172,9 +1291,10 @@ function renderSettlementTab() {
       <div class="action-list">${materialRowsHtml}</div>
     </div>
     <div class="panel">
-      <div class="skill-header"><h2>🏗️ Construction Buildings <span class="action-sub">(in order of unlocks)</span></h2></div>
+      <div class="skill-header"><h2>🏗️ Construction Buildings</h2></div>
+      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Listed in order of unlocks. Gated by Settlement level AND population — build Housing above to grow population.</p>
+      <div class="building-group">${constructionHtml}</div>
     </div>
-    ${constructionHtml}
   `;
 }
 
