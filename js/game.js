@@ -46,12 +46,14 @@ function freshState() {
     actionCounts: {}, // actionId -> number of times completed (success or fail), powers Store unlocks
     constructedBuildings: [], // array of building-stage ids, in construction order
     housingBuilt: {}, // housingId -> count built, powers Settlement population
+    farmPlots: {}, // cropId -> plantedAt (ms timestamp); one plot per crop type. Absent/null = empty, ready to plant.
     lastSeen: Date.now(),
   };
 }
 
 let state = loadState();
 let lastTick = Date.now();
+let farmTickAccumMs = 0; // throttles Farming-tab re-render while a crop is growing (see gameLoop)
 
 function loadState() {
   try {
@@ -69,6 +71,7 @@ function loadState() {
     merged.actionCounts = Object.assign({}, fresh.actionCounts, parsed.actionCounts || {});
     merged.constructedBuildings = parsed.constructedBuildings || fresh.constructedBuildings;
     merged.housingBuilt = Object.assign({}, fresh.housingBuilt, parsed.housingBuilt || {});
+    merged.farmPlots = Object.assign({}, fresh.farmPlots, parsed.farmPlots || {});
     return merged;
   } catch (e) {
     console.warn("Save corrupted, starting fresh", e);
@@ -354,6 +357,102 @@ function getSettlementBuff(type) {
   });
   return total;
 }
+
+// ---------- Farming / Crops (seed-and-grow-timer) ----------
+// One plot per crop type. state.farmPlots[cropId] holds the ms
+// timestamp the crop was planted, or is absent/null if the plot is
+// empty. Growth is wall-clock real time (growHours), NOT tied to
+// the normal currentAction tick loop, so it keeps growing whether
+// the tab is open, another skill is actively running, or the game
+// is closed entirely (same "catch up on load" pattern as
+// simulateOffline() uses for currentAction).
+function findCrop(cropId) {
+  return CROPS.find(c => c.id === cropId);
+}
+
+function isPlotPlanted(cropId) {
+  return !!state.farmPlots[cropId];
+}
+
+// Returns a 0-1 growth fraction (clamped), or null if the plot is empty.
+function cropGrowthProgress(cropId) {
+  const plantedAt = state.farmPlots[cropId];
+  if (!plantedAt) return null;
+  const crop = findCrop(cropId);
+  const elapsedMs = Date.now() - plantedAt;
+  const totalMs = crop.growHours * 3600 * 1000;
+  return Math.min(1, elapsedMs / totalMs);
+}
+
+function isCropReady(cropId) {
+  const pct = cropGrowthProgress(cropId);
+  return pct !== null && pct >= 1;
+}
+
+// Human-readable "2h 14m left" / "Ready!" string for the Farming UI.
+function cropTimeRemainingLabel(cropId) {
+  const plantedAt = state.farmPlots[cropId];
+  if (!plantedAt) return "";
+  const crop = findCrop(cropId);
+  const totalMs = crop.growHours * 3600 * 1000;
+  const remainingMs = Math.max(0, totalMs - (Date.now() - plantedAt));
+  if (remainingMs <= 0) return "Ready!";
+  const totalMin = Math.ceil(remainingMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m left` : `${m}m left`;
+}
+
+function plantCrop(cropId) {
+  const crop = findCrop(cropId);
+  if (!crop) return;
+  if (!skillUnlocked("farming")) { toast("Farming is locked."); return; }
+  if (state.skillLevels.farming < crop.level) {
+    toast(`Need Farming level ${crop.level}`);
+    return;
+  }
+  if (isPlotPlanted(cropId)) {
+    toast(`${crop.name} is already planted.`);
+    return;
+  }
+  if ((state.inventory[crop.seedItem] || 0) < 1) {
+    toast(`Need ${ITEMS[crop.seedItem].name} — buy some from the Trading Post.`);
+    return;
+  }
+  removeItem(crop.seedItem, 1);
+  state.farmPlots[cropId] = Date.now();
+  addXp("farming", crop.plantXp);
+  toast(`🌱 Planted ${crop.icon} ${crop.name}. Ready in ${crop.growHours}h.`);
+  saveState(); // persist immediately, same reasoning as startAction()
+  render();
+}
+
+function harvestCrop(cropId) {
+  const crop = findCrop(cropId);
+  if (!crop) return;
+  if (!isCropReady(cropId)) {
+    toast(`${crop.name} isn't ready yet.`);
+    return;
+  }
+  let qty = 1;
+  qty = applyYieldBonus(qty, getSettlementBuff("farming_yield_bonus_pct"));
+  addItem(crop.cropItem, Math.max(1, qty));
+  // Small chance to get a seed back, per Kev's "small amount returned
+  // on harvest" request — not guaranteed, so seeds stay a real cost.
+  if (Math.random() < crop.seedRefundChance) {
+    addItem(crop.seedItem, 1);
+    toast(`🌾 Harvested ${crop.icon} ${crop.name} (+1 ${ITEMS[crop.seedItem].name} refunded)!`);
+  } else {
+    toast(`🌾 Harvested ${crop.icon} ${crop.name}!`);
+  }
+  let xpGain = crop.harvestXp;
+  xpGain = Math.round(xpGain * (1 + getSettlementBuff("farming_xp_pct")));
+  addXp("farming", xpGain);
+  delete state.farmPlots[cropId];
+  saveState();
+  render();
+}
+
 
 // ---------- Actions (gathering/production/risk) ----------
 function findAction(skillId, actionId) {
@@ -742,6 +841,16 @@ function simulateOffline() {
     }
   }
 
+  // Crops grow on real wall-clock time (no 8h cap, unlike currentAction
+  // above — they're meant to be checked on periodically, like a real
+  // farm) so there's nothing to simulate here; just let the player
+  // know if anything finished growing while they were away.
+  const readyCrops = Object.keys(state.farmPlots).filter(isCropReady);
+  if (readyCrops.length > 0) {
+    const names = readyCrops.map(id => `${findCrop(id).icon} ${findCrop(id).name}`).join(", ");
+    toast(`🌾 Ready to harvest: ${names}`);
+  }
+
   state.lastSeen = now;
 }
 
@@ -762,6 +871,17 @@ function gameLoop() {
   if (state.combat.inBattle) {
     combatTick(deltaSec);
     updateCombatView();
+  }
+
+  // Crop timers run on wall-clock time, not this tick loop, but the
+  // Farming tab's "Xh Ym left" labels and Harvest-button enabled
+  // state still need to refresh periodically while that tab is open
+  // (re-rendering every 100ms would be wasteful for a once-a-minute
+  // change, so this is throttled to roughly once a second).
+  farmTickAccumMs += deltaSec * 1000;
+  if (farmTickAccumMs >= 1000) {
+    farmTickAccumMs = 0;
+    if (activeTab === "farming") renderFarmingTab();
   }
 
   updateGoldDisplay();
@@ -881,6 +1001,124 @@ function renderSkillTab(skillId) {
 
   html += `</div></div>`;
   document.getElementById(`tab-${skillId}`).innerHTML = html;
+}
+
+// Farming has its own render function (instead of the generic
+// renderSkillTab) because it mixes two different mechanics: the
+// normal instant/repeatable animal-husbandry actions (Tend Chickens
+// etc, rendered exactly like any other skill's action-list) PLUS the
+// seed-and-grow-timer Crops system (Plant/Harvest, real-time growth
+// clocks) in its own panel below.
+function renderFarmingTab() {
+  const skillId = "farming";
+  const skill = SKILLS[skillId];
+  const level = state.skillLevels[skillId];
+  const xp = state.skillXp[skillId];
+  const xpStart = xpForLevel(level);
+  const xpEnd = xpForLevel(level + 1);
+  const pct = level >= 99 ? 100 : Math.floor(((xp - xpStart) / (xpEnd - xpStart)) * 100);
+  const unlocked = skillUnlocked(skillId);
+
+  let lockHtml = "";
+  if (!unlocked) {
+    const reasons = skillLockReasons(skillId);
+    lockHtml = `
+      <div class="lock-banner">
+        <strong>🔒 ${skill.name} is locked.</strong> Reach the following first:
+        ${reasons.map(r => r.custom ? `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.custom}</div>` : `<div class="lock-req ${r.met ? 'met' : 'unmet'}">${r.met ? '✓' : '✗'} ${r.name} level ${r.need} (currently ${r.have})</div>`).join("")}
+      </div>
+    `;
+  }
+
+  // Animal husbandry: instant/repeatable actions, same rendering as
+  // any other skill tab's action rows.
+  let actionsHtml = "";
+  skill.actions.forEach(action => {
+    const levelLocked = level < action.level;
+    const locked = !unlocked || levelLocked;
+    const isActive = state.currentAction &&
+      state.currentAction.skillId === skillId &&
+      state.currentAction.actionId === action.id;
+    const affordable = canAffordAction(action);
+
+    const bits = [];
+    if (action.yields) bits.push(action.yields.map(y => `${ITEMS[y.item].icon} ${ITEMS[y.item].name} x${y.qty}`).join(", "));
+    bits.push(`${action.xp} xp`, `${action.time}s`);
+
+    const progressHtml = isActive
+      ? `<div class="action-progress-outer"><div class="action-progress-inner" id="inline-action-progress" style="width:${state.currentAction.progress * 100}%"></div></div>`
+      : "";
+
+    actionsHtml += `
+      <div class="action-row ${locked ? 'locked' : ''}">
+        <div class="action-info">
+          <div class="action-name">${action.name} ${levelLocked ? `(Req. Lv.${action.level})` : ''}</div>
+          <div class="action-sub">${bits.join(" · ")}</div>
+          ${progressHtml}
+        </div>
+        <button class="action-btn ${isActive ? 'active-action' : ''}"
+          ${locked || (!affordable && !isActive) ? 'disabled' : ''}
+          onclick="${isActive ? 'stopAction()' : `startAction('${skillId}','${action.id}')`}">
+          ${isActive ? 'Stop' : 'Start'}
+        </button>
+      </div>
+    `;
+  });
+
+  // Crops: seed-and-grow-timer system, sorted by level.
+  let cropsHtml = "";
+  CROPS.slice().sort((a, b) => a.level - b.level).forEach(crop => {
+    const levelLocked = level < crop.level;
+    const locked = !unlocked || levelLocked;
+    const planted = isPlotPlanted(crop.id);
+    const ready = planted && isCropReady(crop.id);
+    const haveSeeds = (state.inventory[crop.seedItem] || 0) > 0;
+    const growPct = planted ? Math.round((cropGrowthProgress(crop.id) || 0) * 100) : 0;
+
+    let stateHtml = "";
+    let buttonHtml = "";
+    if (!planted) {
+      stateHtml = `<div class="action-sub">Needs: ${ITEMS[crop.seedItem].icon} ${ITEMS[crop.seedItem].name} x1 (have ${state.inventory[crop.seedItem] || 0}) · Grows in ${crop.growHours}h · +${crop.plantXp} xp on plant, +${crop.harvestXp} xp on harvest</div>`;
+      buttonHtml = `<button class="action-btn" ${locked || !haveSeeds ? 'disabled' : ''} onclick="plantCrop('${crop.id}')">🌱 Plant</button>`;
+    } else {
+      stateHtml = `
+        <div class="action-sub">${ready ? '✅ Ready to harvest!' : `Growing… ${cropTimeRemainingLabel(crop.id)}`}</div>
+        <div class="action-progress-outer"><div class="action-progress-inner" style="width:${growPct}%;background:${ready ? 'var(--green)' : 'linear-gradient(90deg, var(--red), var(--gold))'}"></div></div>
+      `;
+      buttonHtml = `<button class="action-btn ${ready ? '' : 'secondary'}" ${locked || !ready ? 'disabled' : ''} onclick="harvestCrop('${crop.id}')">🌾 Harvest</button>`;
+    }
+
+    cropsHtml += `
+      <div class="action-row ${locked ? 'locked' : ''}">
+        <div class="action-info">
+          <div class="action-name">${crop.icon} ${crop.name} ${levelLocked ? `(Req. Lv.${crop.level})` : ''}</div>
+          ${stateHtml}
+        </div>
+        ${buttonHtml}
+      </div>
+    `;
+  });
+
+  const html = `
+    <div class="panel">
+      <div class="sticky-skill-header">
+        <div class="skill-header">
+          <h2>${skill.icon} ${skill.name}</h2>
+          <div class="level-badge">Lv. ${level}</div>
+        </div>
+        <div class="xp-bar-outer"><div class="xp-bar-inner" style="width:${pct}%"></div></div>
+        <div class="xp-label">${formatXpLabel(level, xp)}</div>
+      </div>
+      ${lockHtml}
+      <div class="action-list">${actionsHtml}</div>
+    </div>
+    <div class="panel">
+      <div class="skill-header"><h2>🌱 Crops</h2></div>
+      <p class="action-sub" style="margin-top:-6px;margin-bottom:10px;">Buy seeds from the Trading Post (Store tab), then Plant. Crops grow in real time — on a timer, not tied to being actively worked — and keep growing while you do something else or are offline. Harvest once ready for the crop plus a small chance of a seed refund.</p>
+      <div class="action-list">${cropsHtml}</div>
+    </div>
+  `;
+  document.getElementById("tab-farming").innerHTML = html;
 }
 
 function renderEquipmentGrid() {
@@ -1363,6 +1601,7 @@ function render() {
   else if (activeTab === "store") renderStoreTab();
   else if (activeTab === "settlement") renderSettlementTab();
   else if (activeTab === "settings") renderSettingsTab();
+  else if (activeTab === "farming") renderFarmingTab();
   else renderSkillTab(activeTab);
   updateInlineActionProgress();
   updateGoldDisplay();

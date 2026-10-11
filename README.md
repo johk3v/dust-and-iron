@@ -20,7 +20,7 @@ Progress autosaves to `localStorage` every 5 seconds, and the game simulates off
 ### Non-combat skills
 - **Woodcutting** — chop Pine, Alder, Fir, Maple, Oak, Ironwood, Mesquite, and Redwood (8 tiers)
 - **Prospecting** — pan/dig/quarry Copper, Tin, Coal, Iron, Bronze, Limestone, Silver, and Gold
-- **Farming** — tend chickens, milk cows, grow Potatoes/Carrots/Wheat/Tomatoes/Corn/Cotton, herd cattle
+- **Farming** — tend chickens, milk cows, herd cattle, plus a full **Crops** growing system (see below)
 - **Fishing** — 16 species from Perch and Bluegill up through Sturgeon, Paddlefish, Steelhead, and two rare risk/reward catches (Legendary Catfish, Golden Trout); catches double as food, or feed into Cooking
 - **Cooking** — turn Farming produce + Fishing catches into cooked meals that heal (and sell) for noticeably more than the raw ingredients. *Soft-locked* until Farming 3 + Fishing 3.
 - **Exploration** — scout trails, search ruins and hunt relics for gold and trophies (risk/reward, some actions can fail); scouting trails also feeds the Store's Trading Post unlock
@@ -40,6 +40,14 @@ Turn-based (tick-based) fights across 4 regions (Dusty Gulch → Whispering Pine
 
 ### Equipment system
 Six gear slots: **Weapon**, **Head**, **Top**, **Bottom**, **Boots**, and an **Extra** customization slot for accessories (badges, charms, trinkets) that grant bonus damage % and/or defense. Armor reduces incoming damage; accessories can boost both offense and defense.
+
+### Farming: Crops (seed-and-grow-timer)
+Alongside the instant/repeatable animal-husbandry actions (Tend Chickens, Milk Cow, Herd Cattle), Farming has a real-time crop-growing system:
+- Buy **seeds** from the Trading Post (Store tab) — Potato, Carrot, Tomato, Corn, Wheat, and Cotton seeds, priced and level-gated to match their crop.
+- **Plant** a seed on its plot (one plot per crop type) — consumes 1 seed, grants a small amount of Farming XP immediately, and starts a real-world countdown timer. Higher-level crops take longer to grow (1h for Potato up to 6h for Cotton).
+- The crop keeps growing on wall-clock time whether you're actively playing, doing something else in-game, or offline entirely — it isn't tied to being an active "current action" like other skills.
+- Once the timer's up, **Harvest** for the crop (plus a ~25% chance of a seed refund) and a full Farming XP reward. You'll get a toast telling you what's ready to harvest next time you load the game.
+- Without owning seeds, a crop can't be planted at all — Corn can't be grown/harvested until you've bought Corn Seeds first.
 
 ### Settlement: construction system
 Settlement is organized into three sections, each a separate panel, with every buildable item indented as a row directly under its category:

@@ -42,6 +42,16 @@ const ITEMS = {
   tomato:       { name: "Tomato",       icon: "🍅", type: "produce", sell: 4 },
   corn:         { name: "Corn",         icon: "🌽", type: "produce", sell: 5 },
 
+  // Farming: seeds. Bought from the Trading Post, consumed by Plant,
+  // and returned in a small amount on Harvest. "material" type —
+  // not food, low sell value, exist purely as the planting gate.
+  potato_seeds: { name: "Potato Seeds", icon: "🌱", type: "material", sell: 1 },
+  carrot_seeds: { name: "Carrot Seeds", icon: "🌱", type: "material", sell: 1 },
+  wheat_seeds:  { name: "Wheat Seeds",  icon: "🌱", type: "material", sell: 1 },
+  tomato_seeds: { name: "Tomato Seeds", icon: "🌱", type: "material", sell: 2 },
+  corn_seeds:   { name: "Corn Seeds",   icon: "🌱", type: "material", sell: 2 },
+  cotton_seeds: { name: "Cotton Seeds", icon: "🌱", type: "material", sell: 3 },
+
   // Farming
   egg:          { name: "Egg",          icon: "🥚", type: "produce", sell: 1 },
   milk:         { name: "Milk",         icon: "🥛", type: "produce", sell: 2 },
@@ -216,15 +226,13 @@ const SKILLS = {
     actions: [
       // farmAction: true lets a built Farmhouse/Barn (Settlement) boost
       // xp/yield via getSettlementBuff('farming_xp_pct' / 'farming_yield_bonus_pct').
+      // Animal husbandry stays as instant, repeatable actions (no
+      // seeds/growing — you can't "plant" a chicken). Crop farming
+      // (potatoes/carrots/wheat/tomatoes/corn/cotton) moved to the
+      // seed-and-grow-timer system below (see CROPS).
       { id: "tend_chickens", name: "Tend Chickens", level: 1,  xp: 4,  time: 2.0, farmAction: true, yields: [{ item: "egg", qty: 1 }] },
       { id: "milk_cow",      name: "Milk the Cow",  level: 1,  xp: 4,  time: 2.2, farmAction: true, yields: [{ item: "milk", qty: 1 }] },
-      { id: "grow_potatoes", name: "Grow Potatoes", level: 4,  xp: 6,  time: 2.4, farmAction: true, yields: [{ item: "potato", qty: 1 }] },
-      { id: "grow_carrots",  name: "Grow Carrots",  level: 7,  xp: 8,  time: 2.5, farmAction: true, yields: [{ item: "carrot", qty: 1 }] },
-      { id: "grow_wheat",    name: "Grow Wheat",    level: 6,  xp: 8,  time: 2.6, farmAction: true, yields: [{ item: "wheat", qty: 1 }] },
-      { id: "grow_tomatoes", name: "Grow Tomatoes", level: 9,  xp: 10, time: 2.7, farmAction: true, yields: [{ item: "tomato", qty: 1 }] },
-      { id: "grow_corn",     name: "Grow Corn",     level: 12, xp: 12, time: 2.9, farmAction: true, yields: [{ item: "corn", qty: 1 }] },
       { id: "herd_cattle",   name: "Herd Cattle",   level: 10, xp: 11, time: 3.0, farmAction: true, yields: [{ item: "cattle_hide", qty: 1 }] },
-      { id: "grow_cotton",   name: "Grow Cotton",   level: 16, xp: 15, time: 3.4, farmAction: true, yields: [{ item: "cotton", qty: 1 }] },
     ],
   },
 
@@ -418,6 +426,32 @@ const SKILLS = {
 };
 
 // ------------------------------------------------------------
+// FARMING: CROPS (seed-and-grow-timer system)
+// Per Kev's request: seeds come from the Trading Post, a "Plant"
+// action consumes a seed and starts a real-time growth timer (NOT
+// the normal tick-loop action — see plantCrop()/harvestCrop() in
+// game.js), and "Harvest" (available once growHours have elapsed,
+// including while offline) yields the crop + a small seed refund.
+// Higher-level/higher-value crops take longer to grow. A small XP
+// amount is granted on Plant, the bulk on Harvest.
+// ------------------------------------------------------------
+
+const CROPS = [
+  { id: "potato", name: "Potato", icon: "🥔", level: 4,  seedItem: "potato_seeds", cropItem: "potato",
+    growHours: 1,  plantXp: 2,  harvestXp: 8,  seedRefundChance: 0.25 },
+  { id: "wheat",  name: "Wheat",  icon: "🌾", level: 6,  seedItem: "wheat_seeds",  cropItem: "wheat",
+    growHours: 1.5, plantXp: 2,  harvestXp: 10, seedRefundChance: 0.25 },
+  { id: "carrot", name: "Carrot", icon: "🥕", level: 7,  seedItem: "carrot_seeds", cropItem: "carrot",
+    growHours: 2,  plantXp: 3,  harvestXp: 12, seedRefundChance: 0.2 },
+  { id: "tomato", name: "Tomato", icon: "🍅", level: 9,  seedItem: "tomato_seeds", cropItem: "tomato",
+    growHours: 3,  plantXp: 4,  harvestXp: 16, seedRefundChance: 0.2 },
+  { id: "corn",   name: "Corn",   icon: "🌽", level: 12, seedItem: "corn_seeds",   cropItem: "corn",
+    growHours: 4,  plantXp: 5,  harvestXp: 20, seedRefundChance: 0.15 },
+  { id: "cotton", name: "Cotton", icon: "🧵", level: 16, seedItem: "cotton_seeds", cropItem: "cotton",
+    growHours: 6,  plantXp: 7,  harvestXp: 28, seedRefundChance: 0.15 },
+];
+
+// ------------------------------------------------------------
 // COMBAT SKILLS — trained by equipping the matching weapon class.
 // ------------------------------------------------------------
 
@@ -504,6 +538,12 @@ const STORE_SECTIONS = [
       { item: "trail_rations",     qty: 1,  price: 12 },
       { item: "canteen_of_water",  qty: 1,  price: 5 },
       { item: "worn_boots",        qty: 1,  price: 10 },
+      { item: "potato_seeds",      qty: 5,  price: 8 },
+      { item: "wheat_seeds",       qty: 5,  price: 10 },
+      { item: "carrot_seeds",      qty: 5,  price: 12 },
+      { item: "tomato_seeds",      qty: 5,  price: 16 },
+      { item: "corn_seeds",        qty: 5,  price: 20 },
+      { item: "cotton_seeds",      qty: 5,  price: 26 },
     ],
   },
   {
